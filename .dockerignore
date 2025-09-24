@@ -1,0 +1,7 @@
+**/__pycache__
+**/.ipynb_checkpoints
+outputs
+venv*
+pretrained_weights*
+pretrain_data*
+.vscode

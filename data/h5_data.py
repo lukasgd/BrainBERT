@@ -33,7 +33,9 @@ class H5Data():
         self.timestamp = self.get_timestamp()
 
     def get_timestamp(self):
-        if not os.path.exists(self.timestamp_data):
+
+
+        if not hasattr(self, "timestamp_data") or not os.path.exists(self.timestamp_data):
             return None
 
         with open(self.timestamp_data, 'r') as f:

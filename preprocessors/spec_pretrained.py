@@ -3,6 +3,7 @@ from .morelet_preprocessor import MoreletPreprocessor
 from .superlet_preprocessor import SuperletPreprocessor
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 import models
 import os
 
@@ -22,7 +23,8 @@ class SpecPretrained(nn.Module):
 
         self.cfg = cfg
         ckpt_path = cfg.upstream_ckpt
-        init_state = torch.load(ckpt_path)
+        init_state = torch.load(ckpt_path) if not dist.is_initialized() \
+            else torch.load(ckpt_path, map_location=torch.device(f"cuda:{os.environ["LOCAL_RANK"]}"))
         upstream_cfg = init_state["model_cfg"]
         if upstream_cfg.name=='debug_model':
             upstream_cfg.name='masked_tf_model'

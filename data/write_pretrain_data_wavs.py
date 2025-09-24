@@ -13,6 +13,7 @@ import glob
 import time
 from tqdm import tqdm as tqdm
 import numpy as np
+import h5py
 
 log = logging.getLogger(__name__)
 
@@ -27,14 +28,22 @@ def write_manifest(manifest_path, root_out, paths, lengths):
         for row in zip(paths, lengths):
             writer.writerow(row)
 
-def write_trial_data(root_out, trial_id, data_cfg):
+def write_trial_data(root_out, format_out, trial_id, data_cfg):
     log.info(f'Writing {trial_id}')
     subject_id = data_cfg.subject
     data_cfg.brain_runs = [trial_id]
     electrodes = data_cfg.electrodes
     paths, lengths = [], []
-    trial_absolute_path = os.path.join(root_out, subject_id, trial_id)
-    Path(trial_absolute_path).mkdir(exist_ok=True, parents=True)
+
+    if format_out == "h5":
+        h5_path = os.path.join(root_out, f"{subject_id}_{trial_id}.h5")
+        h5_file = h5py.File(h5_path, 'w')
+    elif format_out == "npy":
+        trial_absolute_path = os.path.join(root_out, subject_id, trial_id)
+        Path(trial_absolute_path).mkdir(exist_ok=True, parents=True)
+    else:
+        raise ValueError(f"Invalid out format specified: {format_out}. "
+                         "Must be one of ['h5', 'npy']")
 
     global_i = 0
     for electrode in tqdm(electrodes):#iterate over electrodes here to save memory
@@ -46,11 +55,21 @@ def write_trial_data(root_out, trial_id, data_cfg):
             example = dataset[i]["input"].squeeze()
             file_name = f'{global_i}.npy'
             relative_path = os.path.join(subject_id, trial_id, file_name)
-            save_path = os.path.join(trial_absolute_path, file_name)
-            np.save(save_path, example)
+
+            if format_out == "h5":
+                h5_file.create_dataset(relative_path, data=example)
+            else: # default to npy
+                save_path = os.path.join(trial_absolute_path, file_name)
+                np.save(save_path, example)
+
             paths.append(str(relative_path))
             lengths.append(example.shape[0])
             global_i += 1
+
+
+    if format_out == "h5":
+        h5_file.close()
+
     manifest_path = os.path.join(root_out, "manifests", subject_id, trial_id)
     Path(manifest_path).mkdir(exist_ok=True, parents=True)
     write_manifest(manifest_path, root_out, paths, lengths)
@@ -79,6 +98,7 @@ def write_absolute_manifests(root_out):
 
 def single_process(cfg, subject_splits):
     root_out = cfg.data_prep.out_dir
+    format_out = cfg.data_prep.out_format
     data_cfg = cfg.data
 
     paths, lengths = [], []
@@ -91,7 +111,7 @@ def single_process(cfg, subject_splits):
             data_cfg.brain_runs=[trial]
             data_cfg.electrodes = get_clean_laplacian_electrodes(subject, data_root=cfg.data.raw_brain_data_dir)
             data_cfg.subject = subject
-            write_trial_data(root_out, trial, data_cfg)
+            write_trial_data(root_out, format_out, trial, data_cfg)
 
 @hydra.main(version_base=None, config_path="../conf")
 def main(cfg: DictConfig) -> None:
@@ -106,7 +126,7 @@ def main(cfg: DictConfig) -> None:
 
     subject_splits = {}
     for i,k in enumerate(pretrain_split):
-        idx = i%2
+        idx = i % max(2, os.cpu_count()//4)
         if idx not in subject_splits:
             subject_splits[idx] = {}
         subject_splits[idx][k] = pretrain_split[k]
@@ -114,6 +134,7 @@ def main(cfg: DictConfig) -> None:
     #subject splits maps process_id to a subset of pretrain split
     ps = []
     for i in subject_splits:
+        # single_process(cfg, subject_splits[i])  # for debugging invoke single_process directly
         x = Process(target=single_process, args=(cfg, subject_splits[i]))
         ps.append(x)
         x.start()

@@ -37,6 +37,10 @@ class FeatureExtractTask(BaseTask):
                 predicts.append(valid_outs["predicts"])
                 labels.append(batch["labels"])
                 all_outs["loss"] += valid_outs["loss"]
+
+        if self.cfg.dist_gpu:
+            raise NotImplementedError("Distributed ROC AUC and F1 not implemented yet")
+
         labels = np.array([x for y in labels for x in y])
         predicts = [np.array([p]) if len(p.shape)==0 else p for p in predicts]
         predicts = np.concatenate(predicts)
@@ -48,7 +52,7 @@ class FeatureExtractTask(BaseTask):
         return all_outs
 
     def get_batch_iterator(self, dataset, batch_size, shuffle=True, **kwargs):
-        return data.DataLoader(dataset, batch_size=batch_size, collate_fn=feature_extracter_collator, **kwargs)
+        return self.get_data_loader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=feature_extracter_collator, **kwargs)
 
     def output_logs(self, train_logging_outs, val_logging_outs, writer, global_step):
         val_auc_roc = val_logging_outs["roc_auc"]

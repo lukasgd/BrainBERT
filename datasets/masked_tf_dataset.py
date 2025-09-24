@@ -8,6 +8,7 @@ from scipy.io import wavfile
 from datasets import register_dataset
 from preprocessors import STFTPreprocessor
 from util.mask_utils import mask_inputs
+import h5py
 
 @register_dataset(name="masked_tf_dataset")
 class MaskedTFDataset(data.Dataset):
@@ -27,6 +28,17 @@ class MaskedTFDataset(data.Dataset):
             files.append(row[0])
             lengths.append(row[1])
         self.files, self.lengths = files, lengths
+
+        if 'max_samples' in cfg:
+            self.files = self.files[:cfg.max_samples]
+            self.lengths = self.lengths[:cfg.max_samples]
+
+        if cfg.format == "h5":
+            self.h5_files = {}
+
+            if 'cached_features' in cfg:
+                raise NotImplementedError(
+                    "Cached features not implemented for HDF5 format")
 
         self.cached_features = None
 
@@ -72,8 +84,16 @@ class MaskedTFDataset(data.Dataset):
         
     def __getitem__(self, idx):
         file_name = self.files[idx]
-        file_path = os.path.join(self.root_dir, file_name)
-        data = np.load(file_path)
+
+        if self.cfg.format == "h5":
+            h5_path = os.path.join(
+                self.root_dir, "{}_{}.h5".format(*file_name.split("/")[:2]))
+            if h5_path not in self.h5_files:
+                self.h5_files[h5_path] = h5py.File(h5_path, 'r')
+            data = self.h5_files[h5_path][file_name][()]
+        else:
+            file_path = os.path.join(self.root_dir, file_name)
+            data = np.load(file_path)
 
         data = data.astype('float32')
         #rand_len = random.randrange(1000, len(data), 1)

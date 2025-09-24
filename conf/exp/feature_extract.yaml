@@ -5,6 +5,7 @@ runner:
     valid_batch_size: 128
     shuffle: False
     multi_gpu: False
+    dist_gpu: False
     device: cuda
     total_steps: 1000
     #world_size: 4

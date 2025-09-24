@@ -1,2 +1,3 @@
 out_dir: pretrain_data
+out_format: npy
 pretrain_split: /storage/czw/self_supervised_seeg/data/pretrain_split_trials.json

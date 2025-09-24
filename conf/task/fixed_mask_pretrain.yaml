@@ -1,5 +1,6 @@
 name: spec_pretrain
 mask_type: fixed
+dist_gpu: False
 #data: ???
 time_mask_consecutive_min: 1
 time_mask_consecutive_max: 5

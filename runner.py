@@ -13,6 +13,9 @@ from tensorboardX import SummaryWriter
 from schedulers import build_scheduler
 import torch_optimizer as torch_optim
 
+from torch.nn.parallel import DistributedDataParallel as DDP
+from benchy.torch import BenchmarkGenericIteratorWrapper
+
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +25,8 @@ class Runner():
         self.model = model
         self.task = task
         self.evaluator = None
-        self.device = cfg.device
+        self.device = cfg.device if not cfg.dist_gpu \
+            else f"{cfg.device}:{os.environ['LOCAL_RANK']}"
         self.criterion = criterion
         self.exp_dir = os.getcwd()
         self.output_tb = cfg.get("output_tb", True)
@@ -30,11 +34,21 @@ class Runner():
         if self.output_tb:
             self.logger = SummaryWriter(self.exp_dir)
 
-        if cfg.multi_gpu:
+        assert not(cfg.device=='cpu' and (cfg.multi_gpu or cfg.dist_gpu))
+
+        if cfg.dist_gpu:
+            self.local_rank = int(os.environ["LOCAL_RANK"])
+            torch.cuda.set_device(self.device)
+            log.info(f'Using DDP with device {torch.cuda.current_device()} on local_rank {self.local_rank}')
+
+            self.model.to(self.device)
+            self.model = DDP(self.model, device_ids=[self.local_rank], find_unused_parameters=True)
+
+        elif cfg.multi_gpu:
             self.model = torch.nn.DataParallel(self.model)
             log.info(f'Use {torch.cuda.device_count()} GPUs')
-        assert not(cfg.device=='cpu' and cfg.multi_gpu)
-        self.model.to(self.device)
+            self.model.to(self.device)
+
         self.optim = self._init_optim(self.cfg)
         self.scheduler = build_scheduler(self.cfg.scheduler, self.optim)
         total_steps = self.cfg.total_steps
@@ -45,7 +59,10 @@ class Runner():
 
     def load_from_ckpt(self):
         ckpt_path = self.cfg.start_from_ckpt
-        init_state = torch.load(ckpt_path)
+        if self.cfg.dist_gpu:
+            init_state = torch.load(ckpt_path, map_location=self.device)
+        else:
+            init_state = torch.load(ckpt_path)
         self.task.load_model_weights(self.model, init_state['model'], self.cfg.multi_gpu)
         self.optim.load_state_dict(init_state["optim"])
         self.scheduler.load_state_dict(init_state["optim"])
@@ -74,6 +91,9 @@ class Runner():
         return optim
 
     def output_logs(self, train_logging_outs, val_logging_outs):
+        if self.cfg.dist_gpu and dist.get_rank() != 0:  # only log to tensorboard/mlflow on rank 0
+            return
+
         global_step = self.progress.n
         train_logging_outs['lr'] = self.scheduler.get_lr()
         standard_metrics = ["lr", "loss", "grad_norm"]
@@ -94,10 +114,18 @@ class Runner():
 
     def get_valid_outs(self):
         valid_loader = self.get_batch_iterator(self.task.valid_set, self.cfg.valid_batch_size, shuffle=self.cfg.shuffle, num_workers=self.cfg.num_workers)
+
+        if os.environ.get('ENABLE_BENCHY_VALID', None) == '1':
+            valid_loader = BenchmarkGenericIteratorWrapper(
+                valid_loader, self.cfg.valid_batch_size)
+
         valid_logging_outs = self.task.get_valid_outs(self.model, valid_loader, self.criterion, self.device) 
         return valid_logging_outs
 
     def save_checkpoint_last(self, states, best_val=False):
+        if self.cfg.dist_gpu and dist.get_rank() != 0:  # only save checkpoint on rank 0
+            return
+
         cwd = os.getcwd()
         if best_val:
             save_path = os.path.join(cwd, 'checkpoint_best.pth')
@@ -108,6 +136,8 @@ class Runner():
         log.info(f'Saved checkpoint to {save_path}')
 
     def save_checkpoints(self, best_val=False):
+        if self.cfg.dist_gpu and dist.get_rank() != 0:
+            return
         all_states = {}
         all_states = self.task.save_model_weights(self.model, all_states, self.cfg.multi_gpu)
         all_states['optim'] = self.optim.state_dict()
@@ -120,8 +150,15 @@ class Runner():
         if best_val:
             self.save_checkpoint_last(all_states, best_val)
         
-    def run_epoch(self, train_loader, total_loss, best_state):
+    def run_epoch(self, train_loader, total_loss, best_state, profiler=None):
         epoch_loss = []
+
+        if self.cfg.dist_gpu:
+            if hasattr(train_loader, 'sampler'):
+                train_loader.sampler.set_epoch(self.progress.n // len(train_loader))
+            else:  # benchy wrapper
+                train_loader.iterator.sampler.set_epoch(self.progress.n // len(train_loader))
+
         for batch in train_loader:
             if self.progress.n >= self.progress.total:
                 break
@@ -130,6 +167,9 @@ class Runner():
             total_loss.append(logging_out["loss"])
             epoch_loss.append(logging_out["loss"])
             log_step = self.progress.n % self.cfg.log_step == 0 or self.progress.n == self.progress.total - 1
+
+            if profiler is not None:
+                profiler.step()
 
             ckpt_step = False
             if self.cfg.checkpoint_step > -1:
@@ -160,6 +200,10 @@ class Runner():
     def train(self):
         train_loader = self.get_batch_iterator(self.task.train_set, self.cfg.train_batch_size, shuffle=self.cfg.shuffle, num_workers=self.cfg.num_workers, persistent_workers=self.cfg.num_workers>0)
 
+        if os.environ.get('ENABLE_BENCHY_TRAIN', None) == '1':
+            train_loader = BenchmarkGenericIteratorWrapper(
+                train_loader, self.cfg.train_batch_size)
+
         total_loss = []
         best_val = {"loss": float("inf")}
         best_model = None
@@ -167,14 +211,32 @@ class Runner():
         with logging_redirect_tqdm():
             if self.cfg.checkpoint_step > -1:
                 self.save_checkpoints()
-            while self.progress.n < self.progress.total:
-                total_loss, best_state = self.run_epoch(train_loader, total_loss, best_state)
-                best_model, best_val = best_state
+
+            if 'profiler' in self.cfg and self.cfg.profiler:
+                with torch.profiler.profile(
+                    schedule=torch.profiler.schedule(wait=5, warmup=2, active=3),
+                    on_trace_ready=profile_trace_handler,
+                    with_stack=True,
+                    experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
+                ) as profiler:
+
+                    while self.progress.n < self.progress.total:
+                        total_loss, best_state = self.run_epoch(train_loader, total_loss, best_state, profiler)
+                        best_model, best_val = best_state
+            else:
+                while self.progress.n < self.progress.total:
+                    total_loss, best_state = self.run_epoch(train_loader, total_loss, best_state)
+                    best_model, best_val = best_state
+
             self.progress.close()
         return best_model
                 
     def test(self, best_model_weights):
         test_loader = self.get_batch_iterator(self.task.test_set, self.cfg.valid_batch_size, shuffle=self.cfg.shuffle, num_workers=self.cfg.num_workers, persistent_workers=self.cfg.num_workers>0)
+
+        if os.environ.get('ENABLE_BENCHY_TEST', None) == '1':
+            test_loader = BenchmarkGenericIteratorWrapper(
+                test_loader, self.cfg.valid_batch_size)
 
         test_outs = self.task.get_valid_outs(self.model, test_loader, self.criterion, self.device)
         log.info(f"test_results {test_outs}")
@@ -182,3 +244,8 @@ class Runner():
 
     def get_batch_iterator(self, dataset, batch_size, **kwargs):
         return self.task.get_batch_iterator(dataset, batch_size, **kwargs)
+
+
+def profile_trace_handler(p):
+    p.export_chrome_trace(
+        f"pytorch_trace_s{p.step_num}_r{os.environ.get("SLURM_PROCID", 0)}.json")

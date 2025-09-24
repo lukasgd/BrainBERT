@@ -25,6 +25,10 @@ class SeegWavTask(BaseTask):
                 _, valid_outs = criterion(model, batch, device)
                 all_outs["loss"] += valid_outs["loss"]
         all_outs["loss"] /= len(valid_loader)
+
+        if self.cfg.dist_gpu:
+            all_outs = self.reduce_logging_metrics(all_outs)
+
         return all_outs
 
     def build_model(self, cfg):
@@ -34,7 +38,7 @@ class SeegWavTask(BaseTask):
         return models.build_model(cfg)
  
     def get_batch_iterator(self, dataset, batch_size, shuffle=True, **kwargs):
-        return data.DataLoader(dataset, batch_size=batch_size, collate_fn=wav_collator, **kwargs)
+        return self.get_data_loader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=wav_collator, **kwargs)
 
     def output_logs(self, train_logging_outs, val_logging_outs, writer, global_step):
         for k in train_logging_outs["images"]:

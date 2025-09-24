@@ -2,6 +2,7 @@ import models
 import criterions
 from torch.utils import data
 import torch
+import torch.distributed as dist
 from datasets import build_dataset
 from tasks.utils import split_dataset
 
@@ -32,13 +33,27 @@ class BaseTask():
         scheduler.step(loss)
 
         logging_out["grad_norm"] = grad_norm.item()
+
+        if self.cfg.dist_gpu:
+            logging_out = self.reduce_logging_metrics(logging_out)
+
         return logging_out
 
     def build_criterion(self, cfg):
         return criterions.build_criterion(cfg)
 
     def get_batch_iterator(self, dataset, batch_size, shuffle=True, **kwargs):
-        return data.DataLoader(dataset, batch_size=batch_size, **kwargs)
+        return self.get_data_loader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+    def get_data_loader(self, dataset, **kwargs):
+
+        if not self.cfg.dist_gpu:
+            data_loader = data.DataLoader(dataset, **kwargs)
+        else:
+            sampler = data.distributed.DistributedSampler(dataset, shuffle=kwargs.pop('shuffle', True))
+            data_loader = data.DataLoader(dataset, shuffle=False, sampler=sampler, **kwargs)
+
+        return data_loader
 
     def get_valid_outs():
         raise NotImplementedError
@@ -54,3 +69,20 @@ class BaseTask():
             model.module.load_weights(states)
         else:
             model.load_weights(states)
+
+    def reduce_logging_metrics(self, logging_out):
+        reduced_out = {}
+        for k,v in logging_out.items():
+            if k.endswith("loss") or k.endswith("l1") or k == "grad_norm":
+                v = torch.tensor([v], device=torch.cuda.current_device())
+                dist.all_reduce(v)
+
+                if k == "grad_norm":
+                    reduced_out[k] = v.item()
+                else:
+                    reduced_out[k] = v.item() / dist.get_world_size()
+
+            else:  # do not gather images
+                reduced_out[k] = v
+
+        return reduced_out

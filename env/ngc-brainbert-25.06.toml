@@ -1,0 +1,20 @@
+image = "${CE_IMAGES}/ngc-brainbert+25.06.sqsh"
+
+mounts = [
+    "/capstor",
+    "/iopsstor",
+    "/users/${USER}/BrainBERT/outputs:/workspace/BrainBERT/outputs"
+]
+
+workdir = "/workspace/BrainBERT" 
+
+[annotations]
+com.hooks.aws_ofi_nccl.enabled = "true" 
+com.hooks.aws_ofi_nccl.variant = "cuda12"
+
+[env]
+NCCL_DEBUG = "INFO"
+CUDA_CACHE_DISABLE = "1" 
+TORCH_NCCL_ASYNC_ERROR_HANDLING = "1" 
+MPICH_GPU_SUPPORT_ENABLED = "0" 
+

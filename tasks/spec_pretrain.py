@@ -6,6 +6,7 @@ from tasks import register_task
 from tasks.base_task import BaseTask
 from tasks.batch_utils import spec_collator
 from util.tensorboard_utils import plot_tensorboard_spectrogram, plot_tensorboard_line
+from util import mlflow_utils
 
 @register_task(name="spec_pretrain")
 class SpecPretrain(BaseTask):
@@ -27,6 +28,10 @@ class SpecPretrain(BaseTask):
                 all_outs["l1_loss"] += valid_outs["l1_loss"]
         for key in all_outs:
             all_outs[key] /= len(valid_loader)
+
+        if self.cfg.dist_gpu:
+            all_outs = self.reduce_logging_metrics(all_outs)
+
         return all_outs
 
     def build_model(self, cfg):
@@ -36,7 +41,7 @@ class SpecPretrain(BaseTask):
         return models.build_model(cfg)
  
     def get_batch_iterator(self, dataset, batch_size, shuffle=True, **kwargs):
-        return data.DataLoader(dataset, batch_size=batch_size, collate_fn=spec_collator, **kwargs)
+        return self.get_data_loader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=spec_collator, **kwargs)
 
     def output_logs(self, train_logging_outs, val_logging_outs, writer, global_step):
         for k in train_logging_outs["images"]:
@@ -59,3 +64,4 @@ class SpecPretrain(BaseTask):
             add_prefix('val', val_logging_outs)
             for k,v in all_loss_metrics.items():
                 writer.add_scalar(k, v, global_step=global_step)
+                mlflow_utils.log_metric(k, v, step=global_step)
