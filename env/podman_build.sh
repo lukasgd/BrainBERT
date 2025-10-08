@@ -15,6 +15,7 @@ function print_help_and_exit() {
     echo "  --prepare-offline    Prepare offline build in build_deps/ (requires --base-image)"
     echo "  --build-offline      Build image offline (requires --base-image and prepared build_deps/)"
     echo "  --base-image <img>   Specify the base image (required for offline builds)"
+    echo "  --platform <arch>    Set the target platform for the build (e.g., linux/arm64)"
     echo "  --help               Display this help message and exit"
     echo ""
     echo "Examples:"
@@ -28,18 +29,6 @@ function print_help_and_exit() {
     echo "  podman run -it --rm -e NVIDIA_VISIBLE_DEVICES=void <last-layer-hash> bash"
     exit 1
 }
-
-function image_to_tar() {
-    local image=$1
-
-    image="${image//\//-}"    
-    image="${image//:/+}"
-    echo "${image}.tar"
-}
-
-
-PREPARE_OFFLINE=0
-BUILD_OFFLINE=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -57,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             BASE_IMAGE="$2"
             shift 2
             ;;
+        --platform)
+            PLATFORM_ARCH="$2"
+            shift 2
+            ;;
         --help)
             print_help_and_exit
             ;;
@@ -68,13 +61,13 @@ done
 
 if [[ $# -lt 1 ]]; then
     print_help_and_exit
-elif [ $BUILD_OFFLINE -eq 1 ] && [ -z "$BASE_IMAGE" ]; then
+elif [ ${BUILD_OFFLINE:-0} -eq 1 ] && [ -z "$BASE_IMAGE" ]; then
     echo "Error: --base-image is required when --build-offline is specified." >&2
     exit 1
-elif [ $PREPARE_OFFLINE -eq 1 ] && [ -z "$BASE_IMAGE" ]; then
+elif [ ${PREPARE_OFFLINE:-0} -eq 1 ] && [ -z "$BASE_IMAGE" ]; then
     echo "Error: --base-image is required when --prepare-offline is specified." >&2
     exit 1
-elif [ $PREPARE_OFFLINE -eq 1 ] && [ $BUILD_OFFLINE -eq 1 ]; then
+elif [ ${PREPARE_OFFLINE:-0} -eq 1 ] && [ ${BUILD_OFFLINE:-0} -eq 1 ]; then
     echo "Error: --prepare-offline and --build-offline cannot be used simultaneously." >&2
     exit 1
 fi
@@ -101,7 +94,7 @@ if command -v enroot >/dev/null 2>&1; then
     fi
 fi
 
-if [ $PREPARE_OFFLINE -eq 1 ] || [ $BUILD_OFFLINE -eq 1 ]; then
+if [ ${PREPARE_OFFLINE:-0} -eq 1 ] || [ ${BUILD_OFFLINE:-0} -eq 1 ]; then
 
     : "${BUILD_DEPS:=build_deps}"
 
@@ -110,10 +103,12 @@ if [ $PREPARE_OFFLINE -eq 1 ] || [ $BUILD_OFFLINE -eq 1 ]; then
         exit 1
     fi
 
+    BASE_IMAGE_TAR="$(echo "${BASE_IMAGE}${PLATFORM_ARCH:+-${PLATFORM_ARCH}}" | sed 's|/|-|g; s|:|+|g').tar"
+
 fi
 
 
-if [ $PREPARE_OFFLINE -eq 1 ]; then
+if [ ${PREPARE_OFFLINE:-0} -eq 1 ]; then
 
     if [ -d "${BUILD_DEPS}" ]; then
         echo "Error: BUILD_DEPS directory exists already: ${BUILD_DEPS}" >&2
@@ -142,8 +137,8 @@ if [ $PREPARE_OFFLINE -eq 1 ]; then
     set -x
     mkdir -p ${BUILD_DEPS}/{images,apt,python,src}
 
-    ${CONTAINER_RUNTIME} pull ${BASE_IMAGE}
-    ${CONTAINER_RUNTIME} save -o ${BUILD_DEPS}/images/"$(image_to_tar "${BASE_IMAGE}")" ${BASE_IMAGE}
+    ${CONTAINER_RUNTIME} pull ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} ${BASE_IMAGE}
+    ${CONTAINER_RUNTIME} save ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} -o ${BUILD_DEPS}/images/"${BASE_IMAGE_TAR}" ${BASE_IMAGE}
 
     ${CONTAINER_RUNTIME} run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" ${BASE_IMAGE} bash -c "\
     cd ${BUILD_DEPS}/apt
@@ -169,7 +164,7 @@ if [ $PREPARE_OFFLINE -eq 1 ]; then
 
 else
 
-    if [ $BUILD_OFFLINE -eq 1 ]; then
+    if [ ${BUILD_OFFLINE:-0} -eq 1 ]; then
  
         if [ ! -d "${BUILD_DEPS}" ]; then
             echo "Error: BUILD_DEPS directory does not exist: ${BUILD_DEPS}" >&2
@@ -178,13 +173,13 @@ else
         echo "Using build deps for offline mode at: ${BUILD_DEPS}"
 
         set -x
-        ${CONTAINER_RUNTIME} load -i ${BUILD_DEPS}/images/"$(image_to_tar "${BASE_IMAGE}")" \
+        ${CONTAINER_RUNTIME} load -i ${BUILD_DEPS}/images/"${BASE_IMAGE_TAR}" \
             || { STATUS=$?; echo "Error: ${CONTAINER_RUNTIME} load failed (exit code: $STATUS)"; exit $STATUS; }
         set +x
     fi
 
     set -x 
-    ${CONTAINER_RUNTIME} build ${BUILD_OFFLINE:+--network=none} -t $USER/$IMAGE ${BASE_IMAGE:+--build-arg BASE_IMAGE=${BASE_IMAGE}} "${@:2}" \
+    ${CONTAINER_RUNTIME} build ${BUILD_OFFLINE:+--network=none} ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} -t $USER/$IMAGE ${BASE_IMAGE:+--build-arg BASE_IMAGE=${BASE_IMAGE}} "${@:2}" \
         || { STATUS=$?; set +x; echo "Error: ${CONTAINER_RUNTIME} build failed (exit code: $STATUS)"; exit $STATUS; }
     set +x
 
