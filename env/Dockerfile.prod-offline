@@ -1,0 +1,41 @@
+ARG BASE_IMAGE 
+FROM ${BASE_IMAGE}
+
+COPY . /workspace/BrainBERT
+
+WORKDIR /workspace/BrainBERT
+
+RUN apt-get update \
+  && apt-get install -yqq --no-install-recommends ./build_deps/apt/*.deb \
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -r ./build_deps/apt
+
+RUN cd build_deps/src \
+    && NCCL_TESTS_VERSION=$(ls nccl-tests-*.tar.gz | sed -e 's/nccl-tests-//' -e 's/.tar.gz//') \
+    && tar xf nccl-tests-${NCCL_TESTS_VERSION}.tar.gz \
+    && cd nccl-tests-${NCCL_TESTS_VERSION} \
+    && MPI=1 MPI_HOME=/opt/hpcx/ompi make -j$(nproc) \
+    && cd .. \
+    && rm -rf nccl-tests-${NCCL_TESTS_VERSION}.tar.gz
+
+RUN \
+    # handle incompatible torch-optimizer separately (no deps)
+    pip install -v --no-build-isolation --no-cache --no-dependencies \
+      --no-index --find-links=./build_deps/python \
+      pytorch-ranger torch-optimizer \
+    \
+    # install all source distributions
+    && find ./build_deps/python -type f ! -name "*.whl" -exec basename {} \; | \
+        sed -e 's/-[0-9].*//' | \
+        xargs -r --no-run-if-empty \
+        pip install -v --no-build-isolation --no-cache \
+        --no-index  --find-links=./build_deps/python \
+    \
+    # install remaining wheels
+    && find ./build_deps/python -type f -name "*.whl" | \
+        xargs -r --no-run-if-empty \
+        pip install -v --no-build-isolation --no-cache --no-index \
+        --no-index --find-links=./build_deps/python \
+    \
+    # clean up
+    && rm -rf ./build_deps

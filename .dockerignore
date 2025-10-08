@@ -1,7 +1,8 @@
 **/__pycache__
 **/.ipynb_checkpoints
+build_deps/images/*
 outputs
-venv*
 pretrained_weights*
 pretrain_data*
+venv*
 .vscode
