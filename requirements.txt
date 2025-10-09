@@ -16,3 +16,4 @@ tables
 matplotlib==3.9.4
 git+https://github.com/lukasgd/benchy.git
 mlflow
+pyfirecrest
