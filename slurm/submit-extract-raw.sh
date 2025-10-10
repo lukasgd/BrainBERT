@@ -10,7 +10,7 @@
 
 set -euxo pipefail
 
-: "${PRETRAIN_DATA_RAW_DIR=/capstor/store/path/to/braintreebank.dev/data/}"
+export PRETRAIN_DATA_RAW_DIR=${PRETRAIN_DATA_RAW_DIR:-/capstor/store/path/to/braintreebank.dev/data/}
 
 srun -ul bash -c "
     cd ${PRETRAIN_DATA_RAW_DIR}

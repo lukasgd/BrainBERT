@@ -18,10 +18,11 @@ function print_help_and_exit() {
     echo "  --platform <arch>    Set the target platform for the build (e.g., linux/arm64)"
     echo "  --help               Display this help message and exit"
     echo ""
-    echo "Examples:"
+    echo "Examples (online build):"
     echo "  $0 ngc-pytorch:25.06 -f env/Dockerfile.dev --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 ."
-    echo "  $0 --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-pytorch:25.06 -f env/Dockerfile.dev ."
+    echo "  $0 --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-brainbert:25.06 -f env/Dockerfile.prod ."
     echo ""
+    echo "Example (offline build):"
     echo "  $0 --prepare-offline --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-brainbert:25.06 -f env/Dockerfile.prod"
     echo "  $0 --build-offline --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-brainbert:25.06 -f env/Dockerfile.prod-offline ."
     echo ""
@@ -138,7 +139,12 @@ if [ ${PREPARE_OFFLINE:-0} -eq 1 ]; then
     mkdir -p ${BUILD_DEPS}/{images,apt,python,src}
 
     ${CONTAINER_RUNTIME} pull ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} ${BASE_IMAGE}
-    ${CONTAINER_RUNTIME} save ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} -o ${BUILD_DEPS}/images/"${BASE_IMAGE_TAR}" ${BASE_IMAGE}
+
+    if [[ "${CONTAINER_RUNTIME}" = "podman" ]]; then
+        ${CONTAINER_RUNTIME} save -o ${BUILD_DEPS}/images/"${BASE_IMAGE_TAR}" ${BASE_IMAGE}
+    else
+        ${CONTAINER_RUNTIME} save ${PLATFORM_ARCH:+--platform ${PLATFORM_ARCH}} -o ${BUILD_DEPS}/images/"${BASE_IMAGE_TAR}" ${BASE_IMAGE}
+    fi
 
     ${CONTAINER_RUNTIME} run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" ${BASE_IMAGE} bash -c "\
     cd ${BUILD_DEPS}/apt

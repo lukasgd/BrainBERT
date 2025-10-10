@@ -15,7 +15,7 @@ export MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING=true
 export MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL=1
 export MLFLOW_SYSTEM_METRICS_SAMPLES_BEFORE_LOGGING=1
 
-: "${PRETRAIN_DATA_DIR=$SCRATCH/BrainBERT/pretrain_data/}"
+export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 
 srun -ul --environment ./env/ngc-pytorch-25.06.toml bash -c "
     . venv-pt-25.06/bin/activate

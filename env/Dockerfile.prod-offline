@@ -18,24 +18,7 @@ RUN cd build_deps/src \
     && cd .. \
     && rm -rf nccl-tests-${NCCL_TESTS_VERSION}.tar.gz
 
-RUN \
-    # handle incompatible torch-optimizer separately (no deps)
-    pip install -v --no-build-isolation --no-cache --no-dependencies \
-      --no-index --find-links=./build_deps/python \
-      pytorch-ranger torch-optimizer \
-    \
-    # install all source distributions
-    && find ./build_deps/python -type f ! -name "*.whl" -exec basename {} \; | \
-        sed -e 's/-[0-9].*//' | \
-        xargs -r --no-run-if-empty \
-        pip install -v --no-build-isolation --no-cache \
-        --no-index  --find-links=./build_deps/python \
-    \
-    # install remaining wheels
-    && find ./build_deps/python -type f -name "*.whl" | \
-        xargs -r --no-run-if-empty \
-        pip install -v --no-build-isolation --no-cache --no-index \
-        --no-index --find-links=./build_deps/python \
-    \
-    # clean up
+RUN pip install -v --no-build-isolation \
+    --no-index --find-links=./build_deps/python \
+    -r requirements-offline.txt \
     && rm -rf ./build_deps

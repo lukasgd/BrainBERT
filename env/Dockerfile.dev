@@ -1,8 +1,9 @@
 ARG BASE_IMAGE 
 FROM ${BASE_IMAGE}
 
+ENV APT_DEPS="strace valgrind htop nvtop atop ioping fio tree"
 RUN apt-get update \
-  && apt-get install -yqq --no-install-recommends strace valgrind htop nvtop atop ioping fio tree \
+  && apt-get install -yqq --no-install-recommends ${APT_DEPS} \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NCCL_TESTS_VERSION=2.15.0

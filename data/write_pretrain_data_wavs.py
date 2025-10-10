@@ -124,6 +124,19 @@ def main(cfg: DictConfig) -> None:
     with open(pretrain_split_path) as f:
         pretrain_split = json.load(f)
 
+    available_pretrain_split = dict()
+    for subject, trials in pretrain_split.items():
+        for t in trials:
+            trial_path = os.path.join(cfg.data.raw_brain_data_dir, f'all_subject_data/{subject}_{t}.h5')
+            if not os.path.exists(trial_path):
+                log.warning(f'File {trial_path} does not exist. Skipping this trial.')
+            else:
+                if subject not in available_pretrain_split:
+                    available_pretrain_split[subject] = []
+                available_pretrain_split[subject].append(t)
+
+    pretrain_split = available_pretrain_split
+
     subject_splits = {}
     for i,k in enumerate(pretrain_split):
         idx = i % max(2, os.cpu_count()//4)
