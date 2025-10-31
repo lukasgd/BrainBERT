@@ -26,19 +26,28 @@ wget -r -np -nH --cut-dirs=1 -R "index.html*" https://braintreebank.dev/data/
 
 Optionally, download pretrained weights from the Google Drive link as detailed in Readme to `local-storage/`.
 
-Clone the BrainBERT repository and prepare dependencies for building a container image on the desired target platform
+Clone the BrainBERT repository and download dependencies for building the eventual container image on the desired target platform with
 
 ```bash
 git clone git@github.com:lukasgd/BrainBERT.git && cd BrainBERT
-env/podman_build.sh --prepare-offline --base-image nvcr.io/nvidia/pytorch:25.06-py3 --platform linux/arm64 ngc-brainbert:25.06 -f env/Dockerfile.prod
+env/podman_build.sh --prepare-offline --platform linux/arm64 ngc-brainbert:25.06 -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
 ```
 
-If you try to run this step on an `x86_64` machine with Ubuntu, you may first need to `apt install qemu-user-static` to emulate the target architecture.
+This will build the first stage (download) in `env/Dockerfile.prod-multistage`, containing all dependencies necessary to build the final image (under `/workspace/build_deps` and `/workspace/BrainBERT`).
+
+If you try to run the above step on an `x86_64` machine with Ubuntu, you may first need to `apt install qemu-user-static` to emulate the target architecture.
+
+On a machine with docker installed (analogous for podman), the above will evaluate to
+
+```bash
+docker build --target download --platform linux/arm64 -t localhost/${USER}/ngc-brainbert:25.06-download -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
+docker save --platform linux/arm64 -o build_deps/images/localhost-${USER}-ngc-brainbert+25.06-download-linux-arm64.tar localhost/${USER}/ngc-brainbert:25.06-download
+```
 
 In the same directory, also build a local environment for monitoring with MLflow and interacting with remote HPC clusters through FirecREST, e.g. a Python virtual environment
 
 ```bash
-(cd .. &&
+(cd .. && \
     python -m venv --system-site-packages local-venv && \
     . local-venv/bin/activate && \
     pip install mlflow pyfirecrest)
@@ -47,7 +56,7 @@ In the same directory, also build a local environment for monitoring with MLflow
 or a container
 
 ```bash
-env/podman_build.sh --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-brainbert:25.06 -f env/Dockerfile.prod .
+env/podman_build.sh ngc-brainbert:25.06 -f env/Dockerfile.prod --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
 ```
 
 and change back to the root directory afterwards
@@ -64,16 +73,17 @@ Copy both pretraining dataset and (optionally) weights to remote storage via
 cp -r local-storage/{braintreeban.dev,pretrained_weights.zip} remote-storage/
 ```
 
-Likewise for the code and container dependencies
+Likewise for the download container image containing the base image and all dependencies
 
 ```bash
-cp -r local-storage/BrainBERT remote-storage/
+mkdir remote-storage/BrainBERT/
+cp -r local-storage/BrainBERT/{build_deps,env,slurm,.dockerignore} remote-storage/BrainBERT/
 ```
 
 This step may be sped up by using `scp` directly, i.e.
 
 ```bash
-tar -cvf -C local-storage brainbert.tar BrainBERT
+tar -cvf brainbert.tar -C local-storage BrainBERT/{build_deps,env,slurm,.dockerignore}
 scp local-storage/brainbert.tar clariden:/iopsstor/scratch/cscs/${USER}/test-brainbert
 ssh clariden:/iopsstor/scratch/cscs/${USER}/test-brainbert tar -xvf brainbert.tar
 ```
@@ -88,6 +98,16 @@ The container build can be completed with
 cd /iopsstor/scratch/cscs/${USER}/test-brainbert/BrainBERT
 sbatch slurm/submit-build-image-offline.sh
 ```
+
+which on an Alps compute node runs
+
+```bash
+podman load -i build_deps/images/localhost-${USER}-ngc-brainbert+25.06-download-linux-arm64.tar
+podman build --network none --build-arg DOWNLOAD_IMAGE=localhost/${USER}/ngc-brainbert:25.06-download --platform linux/arm64 -t localhost/${USER}/ngc-brainbert:25.06 -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
+enroot import -x mount -o /capstor/scratch/cscs/${USER}/images/ngc-brainbert+25.06.sqsh podman://localhost/${USER}/ngc-brainbert:25.06
+```
+
+Alternatively, the built image can also be saved from podman as a tar file and retrieved locally (e.g. to be hosted on an external container registry). 
 
 This can be achieved through [PyFirecREST](https://pyfirecrest.readthedocs.io/). This is a client package for [FirecREST](https://eth-cscs.github.io/firecrest-v2/openapi), which is a REST API to interface with Alps. Follow the instructions at https://docs.cscs.ch/access/firecrest/ and create an application `brainbert` on the [developer portal](https://docs.cscs.ch/services/devportal/) [https://developer.cscs.ch]() that is subscribed to the `FirecREST-ML - v2` API to use it in the following. After some initialization, the client is ready to submit jobs and launch data transfers on Clariden.
 
