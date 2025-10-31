@@ -67,7 +67,13 @@ cd ../..
 
 ## Transfer data to remote storage
 
-Copy both pretraining dataset and (optionally) weights to remote storage via
+If the remote storage system is based on LUSTRE, it is assumed that [good striping defaults](https://docs.cscs.ch/guides/storage/#sharing-files-and-data) are pre-configured. Otherwise, they must be applied before transferring any data/code as in
+
+```bash
+ssh clariden lfs setstripe -E 4M -c 1 -E 64M -c 4 -E -1 -c -1 -S 4M /iopsstor/scratch/cscs/${USER}/test-brainbert
+```
+
+Now, copy both pretraining dataset and (optionally) weights to remote storage via
 
 ```bash
 cp -r local-storage/{braintreeban.dev,pretrained_weights.zip} remote-storage/
@@ -85,7 +91,7 @@ This step may be sped up by using `scp` directly, i.e.
 ```bash
 tar -cvf brainbert.tar -C local-storage BrainBERT/{build_deps,env,slurm,.dockerignore}
 scp local-storage/brainbert.tar clariden:/iopsstor/scratch/cscs/${USER}/test-brainbert
-ssh clariden:/iopsstor/scratch/cscs/${USER}/test-brainbert tar -xvf brainbert.tar
+ssh clariden tar -xvf brainbert.tar -C /iopsstor/scratch/cscs/${USER}/test-brainbert
 ```
 
 or `firecrest upload` (cf. below).
