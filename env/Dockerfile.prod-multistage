@@ -1,4 +1,5 @@
 ARG BASE_IMAGE 
+ARG DOWNLOAD_IMAGE=download
 
 FROM ${BASE_IMAGE} as download
 
@@ -25,14 +26,13 @@ RUN cd /workspace/build_deps/python \
   && grep -v 'torch_optimizer'  /workspace/BrainBERT/requirements.txt | \
     pip download --dest . -v --no-build-isolation --no-cache -r /dev/stdin
 
+FROM ${DOWNLOAD_IMAGE} as download-copy
 
 FROM ${BASE_IMAGE} as build-offline
 
-ARG DOWNLOAD_IMAGE=download
+COPY --from=download-copy /workspace/build_deps /workspace/build_deps
 
-COPY --from=${DOWNLOAD_IMAGE} /workspace/build_deps /workspace/build_deps
-
-COPY --from=${DOWNLOAD_IMAGE} /workspace/BrainBERT /workspace/BrainBERT
+COPY --from=download-copy /workspace/BrainBERT /workspace/BrainBERT
 
 RUN apt-get update \
   && apt-get install -yqq --no-install-recommends /workspace/build_deps/apt/*.deb \

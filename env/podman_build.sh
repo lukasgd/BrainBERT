@@ -84,7 +84,7 @@ if command -v enroot >/dev/null 2>&1 && [ ! ${PREPARE_OFFLINE:-0} -eq 1 ]; then
     fi
 fi
 
-IMAGE_NAME=localhost/$USER/$IMAGE  # local image name
+IMAGE_NAME=localhost/${FIRECREST_USER:-$USER}/$IMAGE  # local image name
 
 if [ ${PREPARE_OFFLINE:-0} -eq 1 ] || [ ${BUILD_OFFLINE:-0} -eq 1 ]; then
 
