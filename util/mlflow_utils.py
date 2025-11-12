@@ -33,17 +33,20 @@ def start_run(experiment_name, cfg):
         run_name += f"_{os.environ['SLURM_JOB_ID']}"
 
     if cfg.exp.runner.dist_gpu:
-        tmp_run_id_file = os.path.join(os.getcwd(), f'.mlflow_run_id{run_name}')
+        tmp_run_id_file = os.path.join(os.getcwd(), f'.mlflow_run_id_{run_name}')
 
         if dist.get_rank() == 0:
             mlflow.start_run(run_name=run_name)
+            run_info = mlflow.active_run().info
 
             with open(tmp_run_id_file, 'w') as f:
-                f.write(mlflow.active_run().info.run_id)
+                f.write(run_info.run_id)
                 f.flush()
                 os.fsync(f.fileno())
 
-            log.info(f"Launched MLflow run with ID {mlflow.active_run().info.run_id} on rank {dist.get_rank()}")
+            log.info(f"Launched MLflow run with experiment ID {run_info.experiment_id} and run ID {run_info.run_id} on rank {dist.get_rank()}")
+            log.info(f"MLflow tracking URI: {mlflow.get_tracking_uri()}")
+            log.info(f"MLflow artifact URI: {run_info.artifact_uri}")
 
         while not os.path.exists(tmp_run_id_file):
             time.sleep(1)
