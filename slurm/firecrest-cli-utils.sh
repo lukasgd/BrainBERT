@@ -100,3 +100,50 @@ function firecrest_batch_upload() {
 }
 
 # Batch download function not yet implemented (needs list of files)
+
+# TODO
+
+# Repeatedly download stdout until it can extract the working directory
+
+function firecrest_job_wait_workdir() {
+
+    local f7t_job_stdout
+    f7t_job_stdout=$(firecrest_job_stdout_path "$@")
+
+    local f7t_job_stdout_local="BrainBERT/outputs/logs/$(basename "$f7t_job_stdout")"
+    mkdir -p "$(dirname "$f7t_job_stdout_local")"
+
+    declare -g train_workdir=""
+
+    while true; do
+        # Try to download the file; capture any error output
+        if ! dl_err=$(firecrest download \
+                --account "${FIRECREST_ACCOUNT:?}" \
+                "$f7t_job_stdout" \
+                "$f7t_job_stdout_local" 2>&1); then
+            echo "Could not download '$f7t_job_stdout' yet. Will retry in 5s..."
+            #TODO: make sure that the error is because file does not exist yet??
+            # echo "    Error: $dl_err"
+            sleep 5
+            continue
+        fi
+
+        if [[ -s "$f7t_job_stdout_local" ]]; then
+            # Prints the last whitespace-separated field, wont match file names
+            # with spaces
+            train_workdir=$(awk '/Working directory/ {print $NF; exit}' "$f7t_job_stdout_local")
+        else
+            train_workdir=""
+        fi
+
+        if [[ -n "$train_workdir" ]]; then
+            echo "Found working directory: $train_workdir"
+            break
+        else
+            echo "Working directory not found yet in '$f7t_job_stdout_local'. Retrying in 5s..."
+            sleep 5
+        fi
+    done
+
+    echo "$f7t_job_stdout_local"
+}
