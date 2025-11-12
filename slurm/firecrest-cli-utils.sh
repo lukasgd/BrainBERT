@@ -13,14 +13,14 @@ function firecrest_job_wait_and_extract_status() {
     declare -g f7t_job_exit_code
 
     # wait for job to complete
-    f7t_job_id=$(echo $f7t_job | jq .jobId)
+    f7t_job_id=$(echo $f7t_job | jq ".jobId")
     f7t_job_wait=$(firecrest wait-for-job $f7t_job_id)
     echo $f7t_job_wait
 
     # extract job name, exit state and code
-    f7t_job_name=$(echo $f7t_job_wait |  jq -r .[0].name)
-    f7t_job_state=$(echo $f7t_job_wait |  jq -r .[0].status.state)
-    f7t_job_exit_code=$(echo $f7t_job_wait |  jq -r .[0].status.exitCode)
+    f7t_job_name=$(echo $f7t_job_wait |  jq -r ".[0].name")
+    f7t_job_state=$(echo $f7t_job_wait |  jq -r ".[0].status.state")
+    f7t_job_exit_code=$(echo $f7t_job_wait |  jq -r ".[0].status.exitCode")
 
     # alternatively: echo $f7t_job_wait | jq -e '.[0].status.exitCode != "0"'
     if [[ "${f7t_job_state}" != "COMPLETED" || "${f7t_job_exit_code}" -ne 0 ]]; then
@@ -43,7 +43,7 @@ function firecrest_job_stdout_path() {
     declare -g f7t_job_stdout
 
     local f7t_job_metadata=$(firecrest job-metadata $f7t_job_id)
-    f7t_job_stdout=$(echo $f7t_job_metadata | jq -r .[0].standardOutput | sed -e "s/%x/${f7t_job_name}/" -e "s/%j/${f7t_job_id}/")
+    f7t_job_stdout=$(echo $f7t_job_metadata | jq -r ".[0].standardOutput" | sed -e "s/%x/${f7t_job_name}/" -e "s/%j/${f7t_job_id}/")
 
     echo $f7t_job_stdout
 }
