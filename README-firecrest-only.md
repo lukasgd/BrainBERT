@@ -221,6 +221,7 @@ PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
     sbatch --wait slurm/submit-extract-raw.sh
 PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
 PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
+HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
     sbatch slurm/submit-preprocess-prod.sh
 ```
 
@@ -242,7 +243,9 @@ preprocess_job = client.submit(
     account=os.environ['FIRECREST_ACCOUNT'],
     working_dir=f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT",
     env_vars={ "PRETRAIN_DATA_RAW_DIR": f"{os.environ['FIRECREST_WORKDIR']}/braintreebank.dev",
-               "PRETRAIN_DATA_DIR": f"{os.environ['FIRECREST_WORKDIR']}/pretrain_data" },
+               "PRETRAIN_DATA_DIR": f"{os.environ['FIRECREST_WORKDIR']}/pretrain_data",
+               "HYDRA_BASE_RUN_DIR": f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT/outputs"
+ },
     script_local_path="BrainBERT/slurm/submit-preprocess-prod.sh")
 print(preprocess_job)
 
@@ -267,6 +270,7 @@ f7t_preprocess_job=$(firecrest submit \
     --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
     --env-var PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
     --env-var PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
+    --env-var HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
     BrainBERT/slurm/submit-preprocess-prod.sh)
 
 firecrest_job_wait_and_extract_status "${f7t_preprocess_job}"
