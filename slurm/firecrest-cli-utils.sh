@@ -147,3 +147,85 @@ function firecrest_job_wait_workdir() {
 
     echo "$f7t_job_stdout_local"
 }
+
+# Continuously sync new/updated files from a FirecREST workdir.
+
+function firecrest_sync_new_or_updated_files() {
+    local train_workdir="${1:-$f7t_workdir}"
+
+    if [[ -z "$train_workdir" ]]; then
+        echo "ERROR: No train_workdir provided or found in \$f7t_workdir."
+        return 1
+    fi
+
+    local local_dir="BrainBERT/outputs/$(basename "$train_workdir")"
+    mkdir -p "$local_dir"
+
+    # declare -gA f7t_tracked_mtime=()
+
+    local state_file="$local_dir/.tracked_mtime.tsv"  # format: <name>\t<lastModified>
+    [[ -f "$state_file" ]] || : > "$state_file"
+
+    echo "Starting sync loop from '$train_workdir' -> '$local_dir'"
+
+    while true; do
+        local listing
+        if ! listing=$(firecrest ls -a --recursive "$train_workdir" 2>&1); then
+            echo "ERROR: firecrest ls failed for '$train_workdir': $listing"
+            return 1
+        fi
+
+        # Iterate over all regular files
+        while IFS=$'\t' read -r fname mtime; do
+            [[ -z "$fname" || -z "$mtime" ]] && continue
+
+            # local prev="${f7t_tracked_mtime[$fname]}"
+
+            # echo "Found file: $fname (mtime: $mtime), previous mtime: $prev"
+
+            # Lookup previous mtime from the state file (portable on macOS)
+            local prev
+            prev=$(awk -F '\t' -v f="$fname" '$1==f{print $2; exit}' "$state_file")
+
+            local need_download=0
+            local reason=""
+
+            if [[ -z "$prev" ]]; then
+                need_download=1
+                reason="new"
+            elif [[ "$mtime" != "$prev" ]]; then
+                need_download=1
+                reason="updated"
+            fi
+
+            if (( need_download )); then
+                local remote_path="$train_workdir/$fname"
+                local local_path="$local_dir/$fname"
+                mkdir -p "$(dirname "$local_path")"
+
+                echo "Attempting to download ($reason): $fname"
+                if firecrest download \
+                        --account "${FIRECREST_ACCOUNT:?}" \
+                        "$remote_path" \
+                        "$local_path"; then
+                    echo "Downloaded ($reason): $fname"
+
+                    # f7t_tracked_mtime["$fname"]="$mtime"
+
+                    awk -F '\t' -v OFS='\t' -v f="$fname" -v m="$mtime" '
+                        BEGIN{updated=0}
+                        $1==f{ $2=m; updated=1 }
+                        { print }
+                        END{ if(!updated) print f, m }
+                    ' "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
+
+                else
+                    echo "ERROR: Failed to download '$remote_path' -> '$local_path'"
+                    echo "Skipping this file. Will not retry until lastModified changes."
+                fi
+            fi
+        done < <(jq -r '.[] | select(.type == "-") | [.name, .lastModified] | @tsv' <<<"$listing")
+
+        sleep 5
+    done
+}
