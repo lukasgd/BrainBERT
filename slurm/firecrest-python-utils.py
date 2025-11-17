@@ -27,6 +27,8 @@ def download_mlruns(
                     system_name=system_name,
                     source_path=mlruns_dir,
                     target_path=mlruns_zip_path,
+                    account=firecrest_account,
+                    blocking=True,
                 )
             except f7t.FirecrestException as e:
                 # We try a few times since compression can fail with error:
@@ -164,6 +166,8 @@ def firecrest_push_new_or_updated_files(
             system_name=system_name,
             source_path=remote_archive_path,
             target_path=remote_directory,
+            account=firecrest_account,
+            blocking=True,
         )
 
         try:
