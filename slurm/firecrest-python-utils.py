@@ -1,9 +1,22 @@
 import firecrest as f7t
 import os
+import re
 import sys
 import tarfile
 import tempfile
 import time
+
+from datetime import datetime
+
+import logging
+
+logger = logging.getLogger("firecrest")
+logger.setLevel(logging.DEBUG)
+ch = logging.FileHandler("firecrest-utils.log")
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(message)s", datefmt="%H:%M:%S")
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 
 def download_mlruns(
@@ -119,6 +132,8 @@ def firecrest_push_new_or_updated_files(
     remote_directory,
     firecrest_account,
 ):
+    # TODO: check that remote_directory exists?
+
     local_directory = os.path.abspath(local_directory)
 
     last_push_ts = _read_last_push_timestamp(local_directory)
@@ -189,6 +204,199 @@ def firecrest_push_new_or_updated_files(
     )
 
 
+def _read_last_pull_timestamp(local_directory):
+    marker_path = os.path.join(local_directory, ".firecrest_last_pull")
+    try:
+        with open(marker_path, "r", encoding="utf-8") as f:
+            return float(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0.0
+
+
+def _write_last_pull_timestamp(local_directory, ts=None):
+    if ts is None:
+        ts = time.time()
+    marker_path = os.path.join(local_directory, ".firecrest_last_pull")
+    with open(marker_path, "w", encoding="utf-8") as f:
+        f.write(str(ts))
+
+
+def _collect_remote_new_or_updated_files(client, system_name, remote_directory, since_ts, firecrest_account):
+    remote_directory = remote_directory.rstrip("/")
+
+    entries = client.list_files(
+        system_name=system_name,
+        path=remote_directory,
+        recursive=True,
+        show_hidden=True,
+    )
+
+    files = []
+
+    for entry in entries:
+        name = entry["name"]
+
+        # Skip directories and marker files
+        if (entry.get("type") == "d"):
+            continue
+        if name.endswith(".firecrest_last_push") or name.endswith(".firecrest_last_pull"):
+            continue
+        if name == ".firecrest_pull_sync.tar.gz" or name.endswith(".firecrest_pull_sync.tar.gz"):
+            continue
+
+        last_modified_str = entry.get("lastModified")
+        if not last_modified_str:
+            continue
+
+        dt = datetime.fromisoformat(last_modified_str)
+        mtime = dt.timestamp()
+
+        if mtime <= since_ts:
+            continue
+
+        # name is already the relative path that compress's match_pattern should see
+        files.append(name)
+
+    print(f"Found {len(files)} new/updated remote files in '{remote_directory}'.")
+    return files
+
+
+def _build_emacs_match_pattern(paths):
+    norm_paths = []
+    for p in paths:
+        # Normalize to forward slashes to match remote listing format
+        p = p.replace(os.sep, "/")
+        # Escape regex metacharacters; Emacs also uses backslash for escaping,
+        # so Python's re.escape is close enough for our purposes.
+        escaped = re.escape(p)
+        norm_paths.append(escaped)
+
+    if not norm_paths:
+        return "^$"  # matches nothing
+
+    if len(norm_paths) == 1:
+        return f"^{norm_paths[0]}$"
+
+    # ^path1$\|^path2$\|^path3$
+    anchored = [f"^{p}$" for p in norm_paths]
+    return "\|".join(anchored)
+
+
+def firecrest_pull_new_or_updated_files(
+    client,
+    system_name,
+    remote_directory,
+    local_directory,
+    firecrest_account,
+):
+    local_directory = os.path.abspath(local_directory)
+    os.makedirs(local_directory, exist_ok=True)
+
+    last_pull_ts = _read_last_pull_timestamp(local_directory)
+
+    files_to_download = _collect_remote_new_or_updated_files(
+        client=client,
+        system_name=system_name,
+        remote_directory=remote_directory,
+        since_ts=last_pull_ts,
+        firecrest_account=firecrest_account,
+    )
+
+    if not files_to_download:
+        print("No new or updated remote files to download.")
+        return
+
+    match_pattern = _build_emacs_match_pattern(files_to_download)
+    # print(f"Using match pattern: {match_pattern}")
+
+    # Normalize remote directory and choose a path for the temporary remote archive
+    remote_directory = remote_directory.rstrip("/")
+    remote_archive_path = os.path.join(remote_directory, "../", ".firecrest_pull_sync.tar.gz")
+
+    print(
+        f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
+        f"Creating remote archive {remote_archive_path} on system '{system_name}'."
+    )
+    num_attempts = 3
+    for attempt in range(num_attempts):
+        try:
+            client.compress(
+                system_name=system_name,
+                source_path=remote_directory,
+                target_path=remote_archive_path,
+                # FIXME: match pattern is not taken into account currently
+                # match_pattern=match_pattern,
+                account=firecrest_account,
+                blocking=True,
+            )
+        except f7t.FirecrestException as e:
+            # We try a few times since compression can fail with error:
+            # `Remote process failed with exit status:1 and error message:tar: <file_name>:
+            # file changed as we read it`
+            if attempt == num_attempts - 1:
+                raise e
+
+            print(f"Compression attempt failed with error: {e}. Retrying...")
+            time.sleep(5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_archive_path = os.path.join(tmpdir, "firecrest_pull_sync.tar.gz")
+
+        print(
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
+            f"Downloading remote archive {remote_archive_path} to {local_archive_path}."
+        )
+        client.download(
+            system_name=system_name,
+            source_path=remote_archive_path,
+            target_path=local_archive_path,
+            account=firecrest_account,
+            blocking=True,
+        )
+
+        # # Debug: copy compressed archive to current directory
+        # import shutil
+        # local_archive_pat_cp = os.path.join(os.getcwd(), "firecrest_pull_sync_debug.tar.gz")
+        # shutil.copyfile(local_archive_path, local_archive_pat_cp)
+
+        print(
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
+            f"Extracting archive into '{local_directory}'."
+        )
+        with tarfile.open(local_archive_path, "r:gz") as tar:
+            # Ensure parent directories exist for each member
+            for member in tar.getmembers():
+                member_path = member.name.lstrip("./")
+                target_path = os.path.join(local_directory, member_path)
+                target_dir = os.path.dirname(target_path)
+                if target_dir:
+                    os.makedirs(target_dir, exist_ok=True)
+
+            tar.extractall(path=local_directory)
+
+    try:
+        print(
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
+            f"Removing remote archive {remote_archive_path}."
+        )
+        client.rm(
+            system_name=system_name,
+            path=remote_archive_path,
+            account=firecrest_account,
+            blocking=True,
+        )
+    except Exception as e:
+        print(f"Warning: failed to delete remote archive {remote_archive_path}: {e}")
+
+    _write_last_pull_timestamp(local_directory)
+
+    print(
+        f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
+        f"Successfully pulled {len(files_to_download)} files from '{remote_directory}' "
+        f"into '{local_directory}'."
+    )
+
+
 def main():
     client_id = os.getenv("FIRECREST_CLIENT_ID")
     client_secret = os.getenv("FIRECREST_CLIENT_SECRET")
@@ -208,26 +416,34 @@ def main():
         )
     )
 
-    if len(sys.argv) == 1 or sys.argv[1] == "download_mlruns":
-        download_mlruns(
-            client,
-            system_name,
-            training_workdir,
-            firecrest_account,
-        )
-    elif sys.argv[1] == "push_directory":
+    if sys.argv[1] == "push_directory":
         local_dir = sys.argv[2]
         remote_dir = sys.argv[3]
-        firecrest_push_new_or_updated_files(
-            client,
-            system_name,
-            local_dir,
-            remote_dir,
-            firecrest_account,
-        )
-        return
+        while True:
+            firecrest_push_new_or_updated_files(
+                client,
+                system_name,
+                local_dir,
+                remote_dir,
+                firecrest_account,
+            )
+            time.sleep(10)
+
+    elif sys.argv[1] == "pull_directory":
+        remote_dir = sys.argv[2]
+        local_dir = sys.argv[3]
+        while True:
+            firecrest_pull_new_or_updated_files(
+                client,
+                system_name,
+                remote_dir,
+                local_dir,
+                firecrest_account,
+            )
+            time.sleep(10)
+
     else:
-        print("Usage: python firecrest-python-utils.py download_mlruns|push_directory <local_dir> <remote_dir>")
+        print("Usage: python firecrest-python-utils.py pull_directory <remote_dir> <local_dir> | push_directory <local_dir> <remote_basedir>")
 
 
 if __name__ == "__main__":
