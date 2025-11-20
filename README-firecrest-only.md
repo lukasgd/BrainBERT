@@ -26,7 +26,7 @@ env/podman_build.sh --prepare-offline --platform linux/arm64 ngc-brainbert:25.06
 
 This will build the first stage (download) in `env/Dockerfile.prod-multistage`, containing all dependencies necessary to build the final image (under `/workspace/build_deps` and `/workspace/BrainBERT`).
 
-If you try to run the above step on an `x86_64` machine with Ubuntu, you may first need to `apt install qemu-user-static` to emulate the target architecture. This step took ~23 min on an x86 test machine. 
+If you try to run the above step on an `x86_64` machine with Ubuntu, you may first need to `apt install qemu-user-static` to emulate the target architecture. This step took ~23 min on an x86 test machine.
 
 On a machine with docker installed (analogous for podman), the above will evaluate to
 
@@ -41,7 +41,7 @@ In the same directory, also build a local environment for monitoring with MLflow
 (cd .. && \
     python -m venv --system-site-packages local-venv && \
     . local-venv/bin/activate && \
-    pip install mlflow pyfirecrest)
+    pip install mlflow "pyfirecrest>=3.5.0")
 ```
 
 or a container
@@ -139,7 +139,7 @@ firecrest_job_wait_and_extract_status "${f7t_job}"
 
 The last line ensures that the job completes before control is returned to the user (i.e. synchronous execution) and checks for possible errors. It also sets the job-related variables `f7t_job_id`, `f7t_job_name`, `f7t_job_state` and `f7t_job_exit_code` in the current shell for easy access in subsequent utility calls.
 
-To retrieve the stdout, use the command 
+To retrieve the stdout, use the command
 
 ```bash
 firecrest_job_stdout_path <job-name> <job-id>
@@ -315,7 +315,20 @@ f7t_train_job=$(firecrest submit \
 firecrest_job_wait_and_extract_status "${f7t_train_job}"
 ```
 
-> **TODO:** Synchronize `${FIRECREST_WORKDIR:?}/BrainBERT/outputs/YY-MM-DD/HH-MM-SS` (and possibly `mlruns`) to local storage under `BrainBERT/outputs` (identical directory structure).
+## Synchronize output directories
+
+You can follow the progress of the job by synchronizing `${FIRECREST_WORKDIR:?}/BrainBERT/outputs/YY-MM-DD/HH-MM-SS` and possibly `mlruns` to local storage under `BrainBERT/outputs` (identical directory structure).
+
+To synchronize two directories, you can use two utility methods:
+
+```bash
+mkdir BrainBERT/outputs
+# The script will continously pull the files that have changed in the local directory
+python BrainBERT/slurm/firecrest-python-utils.py pull_directory ${FIRECREST_WORKDIR:?}/BrainBERT/outputs/mlruns BrainBERT/outputs
+
+# Run the `push_directory` to push synchronize files in the other direction.
+python BrainBERT/slurm/firecrest-python-utils.py push_directory <local_directory_path> <remote_directory_path>
+```
 
 Monitor training progress in the `local-venv` or locally built container by running a local MLflow instance
 
