@@ -1,8 +1,7 @@
 image = "${CE_IMAGES}/ngc-brainbert+25.06.sqsh"
 
 mounts = [
-    "/capstor",
-    "/iopsstor"
+    "${SCRATCH}"
 ]
 
 workdir = "/workspace/BrainBERT" 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 
 #SBATCH --job-name brainbert-extract-raw
 #SBATCH --time 2:00:00

@@ -31,8 +31,8 @@ If you try to run the above step on an `x86_64` machine with Ubuntu, you may fir
 On a machine with docker installed (analogous for podman), the above will evaluate to
 
 ```bash
-docker build --target download --platform linux/arm64 -t localhost/${USER}/ngc-brainbert:25.06-download -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
-docker save --platform linux/arm64 -o build_deps/images/localhost-${USER}-ngc-brainbert+25.06-download-linux-arm64.tar localhost/${USER}/ngc-brainbert:25.06-download
+docker build --target download --platform linux/arm64 -t localhost/${FIRECREST_USER}/ngc-brainbert:25.06-download -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
+docker save --platform linux/arm64 -o build_deps/images/localhost-${FIRECREST_USER}-ngc-brainbert+25.06-download-linux-arm64.tar localhost/${FIRECREST_USER}/ngc-brainbert:25.06-download
 ```
 
 In the same directory, also build a local environment for monitoring with MLflow and interacting with remote HPC clusters through FirecREST, e.g. a Python virtual environment
@@ -122,7 +122,7 @@ firecrest mkdir -p \
 If the remote storage system is based on LUSTRE, it is assumed that [good striping defaults](https://docs.cscs.ch/guides/storage/#sharing-files-and-data) are pre-configured. Otherwise, they must be applied before transferring any data/code. For this, source the utilities for FirecREST in the `slurm` directory in your shell environment,
 
 ```bash
-source slurm/firecrest-cli-utils.sh
+source BrainBERT/slurm/firecrest-cli-utils.sh
 ```
 
 and execute the following code to submit a job that sets these settings
@@ -184,6 +184,7 @@ The container build can be completed on Clariden with
 
 ```bash
 cd /iopsstor/scratch/cscs/${USER}/test-brainbert/BrainBERT
+CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
 sbatch slurm/submit-build-image-offline.sh
 ```
 
@@ -203,6 +204,7 @@ All of this can be run through [PyFirecREST](https://pyfirecrest.readthedocs.io/
 f7t_build_job=$(firecrest submit \
     --account ${FIRECREST_ACCOUNT:?} \
     --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+    --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
     BrainBERT/slurm/submit-build-image-offline.sh)
 
 firecrest_job_wait_and_extract_status "${f7t_build_job}"
@@ -219,6 +221,7 @@ Preprocess and extract the pre-training data as detailed in [Readme](https://git
 ```bash
 PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
     sbatch --wait slurm/submit-extract-raw.sh
+CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
 PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
 PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
 HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
@@ -242,7 +245,8 @@ client.wait_for_job(
 preprocess_job = client.submit(
     account=os.environ['FIRECREST_ACCOUNT'],
     working_dir=f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT",
-    env_vars={ "PRETRAIN_DATA_RAW_DIR": f"{os.environ['FIRECREST_WORKDIR']}/braintreebank.dev",
+    env_vars={ "CE_IMAGES": f"{os.environ['FIRECREST_WORKDIR']}/ce-images",
+               "PRETRAIN_DATA_RAW_DIR": f"{os.environ['FIRECREST_WORKDIR']}/braintreebank.dev",
                "PRETRAIN_DATA_DIR": f"{os.environ['FIRECREST_WORKDIR']}/pretrain_data",
                "HYDRA_BASE_RUN_DIR": f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT/outputs"
  },
@@ -268,6 +272,7 @@ firecrest_job_wait_and_extract_status "${f7t_extract_job}"
 f7t_preprocess_job=$(firecrest submit \
     --account ${FIRECREST_ACCOUNT:?} \
     --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+    --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
     --env-var PRETRAIN_DATA_RAW_DIR=${FIRECREST_WORKDIR:?}/braintreebank.dev \
     --env-var PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
     --env-var HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
@@ -281,6 +286,7 @@ firecrest_job_wait_and_extract_status "${f7t_preprocess_job}"
 Submit a training job via
 
 ```bash
+CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
 PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
 HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
 sbatch slurm/submit-train-prod.sh
@@ -292,7 +298,8 @@ or analogously through PyFirecREST (omitting the initialization)
 train_job = client.submit(
     account=os.environ['FIRECREST_ACCOUNT'],
     working_dir=f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT",
-    env_vars={ "PRETRAIN_DATA_DIR": f"{os.environ['FIRECREST_WORKDIR']}/pretrain_data",
+    env_vars={ "CE_IMAGES": f"{os.environ['FIRECREST_WORKDIR']}/ce-images",
+               "PRETRAIN_DATA_DIR": f"{os.environ['FIRECREST_WORKDIR']}/pretrain_data",
                "HYDRA_BASE_RUN_DIR": f"{os.environ['FIRECREST_WORKDIR']}/BrainBERT/outputs" },
     script_local_path="BrainBERT/slurm/submit-train-prod.sh")
 print(train_job)
@@ -308,6 +315,7 @@ or via CLI
 f7t_train_job=$(firecrest submit \
     --account ${FIRECREST_ACCOUNT:?} \
     --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+    --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
     --env-var PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
     --env-var HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
     BrainBERT/slurm/submit-train-prod.sh)

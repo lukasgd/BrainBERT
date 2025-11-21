@@ -82,6 +82,8 @@ if command -v enroot >/dev/null 2>&1 && [ ! ${PREPARE_OFFLINE:-0} -eq 1 ]; then
         echo "Error: Squash image already exists: $SQSH_FILE"
         exit 1
     fi
+
+    mkdir -p "$(dirname "$SQSH_FILE")"
 fi
 
 IMAGE_NAME=localhost/${FIRECREST_USER:-$USER}/$IMAGE  # local image name

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 
 #SBATCH --job-name brainbert-preprocess
 #SBATCH --time 12:00:00
