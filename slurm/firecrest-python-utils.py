@@ -261,25 +261,23 @@ def _collect_remote_new_or_updated_files(client, system_name, remote_directory, 
     return files
 
 
-def _build_emacs_match_pattern(paths):
-    norm_paths = []
+def build_emacs_match_pattern(paths, source_path):
+    root = os.path.basename(source_path.rstrip("/"))
+    patterns = []
     for p in paths:
-        # Normalize to forward slashes to match remote listing format
-        p = p.replace(os.sep, "/")
-        # Escape regex metacharacters; Emacs also uses backslash for escaping,
-        # so Python's re.escape is close enough for our purposes.
-        escaped = re.escape(p)
-        norm_paths.append(escaped)
+        p = p.replace(os.sep, "/").lstrip("./")
+        # prefix with <root>/ so it matches ./<root>/...
+        full = f"{root}/{p}"
+        escaped = re.escape(full)
+        fragment = "./" + escaped  # because find . prints ./...
+        patterns.append(fragment)
 
-    if not norm_paths:
-        return "^$"  # matches nothing
-
-    if len(norm_paths) == 1:
-        return f"^{norm_paths[0]}$"
-
-    # ^path1$\|^path2$\|^path3$
-    anchored = [f"^{p}$" for p in norm_paths]
-    return "\|".join(anchored)
+    if not patterns:
+        return "^$"
+    if len(patterns) == 1:
+        return f"^{patterns[0]}$"
+    inner = r"\|".join(patterns)
+    return rf"^\({inner}\)$"
 
 
 def firecrest_pull_new_or_updated_files(
@@ -306,7 +304,7 @@ def firecrest_pull_new_or_updated_files(
         print("No new or updated remote files to download.")
         return
 
-    match_pattern = _build_emacs_match_pattern(files_to_download)
+    match_pattern = build_emacs_match_pattern(files_to_download, remote_directory)
     # print(f"Using match pattern: {match_pattern}")
 
     # Normalize remote directory and choose a path for the temporary remote archive
@@ -324,8 +322,7 @@ def firecrest_pull_new_or_updated_files(
                 system_name=system_name,
                 source_path=remote_directory,
                 target_path=remote_archive_path,
-                # FIXME: match pattern is not taken into account currently
-                # match_pattern=match_pattern,
+                match_pattern=match_pattern,
                 account=firecrest_account,
                 blocking=True,
             )
