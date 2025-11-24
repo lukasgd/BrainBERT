@@ -1,4 +1,5 @@
 import firecrest as f7t
+import asyncio
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 
-def download_mlruns(
+async def download_mlruns(
     client,
     system_name,
     training_workdir,
@@ -36,13 +37,14 @@ def download_mlruns(
         num_attempts = 3
         for attempt in range(num_attempts):
             try:
-                client.compress(
+                await client.compress(
                     system_name=system_name,
                     source_path=mlruns_dir,
                     target_path=mlruns_zip_path,
                     account=firecrest_account,
                     blocking=True,
                 )
+                break
             except f7t.FirecrestException as e:
                 # We try a few times since compression can fail with error:
                 # `Remote process failed with exit status:1 and error message:tar: <file_name>:
@@ -51,10 +53,10 @@ def download_mlruns(
                     raise e
 
                 print(f"Compression attempt failed with error: {e}. Retrying...")
-                time.sleep(5)
+                await asyncio.sleep(5)
 
         # print(f"Compressed {mlruns_dir} to {mlruns_zip_path}")
-        client.download(
+        await client.download(
             system_name=system_name,
             source_path=mlruns_zip_path,
             target_path=local_zip_path,
@@ -69,7 +71,7 @@ def download_mlruns(
 
         # print("Deleting local and remote zip files...")
         os.remove(local_zip_path)
-        client.rm(
+        await client.rm(
             system_name=system_name,
             path=mlruns_zip_path,
             account=firecrest_account,
@@ -77,7 +79,7 @@ def download_mlruns(
         )
 
         print(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: Sync complete.")
-        time.sleep(5)
+        await asyncio.sleep(5)
 
 
 def _read_last_push_timestamp(local_directory):
@@ -125,7 +127,7 @@ def _collect_new_or_updated_files(local_directory, since_ts):
     return new_files
 
 
-def firecrest_push_new_or_updated_files(
+async def firecrest_push_new_or_updated_files(
     client,
     system_name,
     local_directory,
@@ -165,7 +167,7 @@ def firecrest_push_new_or_updated_files(
             f"{remote_archive_dir}/{remote_archive_name}"
         )
 
-        client.upload(
+        await client.upload(
             system_name=system_name,
             local_file=local_archive_path,
             directory=remote_archive_dir,
@@ -177,7 +179,7 @@ def firecrest_push_new_or_updated_files(
         remote_archive_path = os.path.join(remote_archive_dir, remote_archive_name)
 
         print(f"Extracting archive on remote system into '{remote_directory}'...")
-        client.extract(
+        await client.extract(
             system_name=system_name,
             source_path=remote_archive_path,
             target_path=remote_directory,
@@ -187,7 +189,7 @@ def firecrest_push_new_or_updated_files(
 
         try:
             print(f"Removing remote archive {remote_archive_path}...")
-            client.rm(
+            await client.rm(
                 system_name=system_name,
                 path=remote_archive_path,
                 account=firecrest_account,
@@ -221,10 +223,10 @@ def _write_last_pull_timestamp(local_directory, ts=None):
         f.write(str(ts))
 
 
-def _collect_remote_new_or_updated_files(client, system_name, remote_directory, since_ts, firecrest_account):
+async def _collect_remote_new_or_updated_files(client, system_name, remote_directory, since_ts, firecrest_account):
     remote_directory = remote_directory.rstrip("/")
 
-    entries = client.list_files(
+    entries = await client.list_files(
         system_name=system_name,
         path=remote_directory,
         recursive=True,
@@ -280,7 +282,7 @@ def build_emacs_match_pattern(paths, source_path):
     return rf"^\({inner}\)$"
 
 
-def firecrest_pull_new_or_updated_files(
+async def firecrest_pull_new_or_updated_files(
     client,
     system_name,
     remote_directory,
@@ -292,7 +294,7 @@ def firecrest_pull_new_or_updated_files(
 
     last_pull_ts = _read_last_pull_timestamp(local_directory)
 
-    files_to_download = _collect_remote_new_or_updated_files(
+    files_to_download = await _collect_remote_new_or_updated_files(
         client=client,
         system_name=system_name,
         remote_directory=remote_directory,
@@ -318,7 +320,7 @@ def firecrest_pull_new_or_updated_files(
     num_attempts = 3
     for attempt in range(num_attempts):
         try:
-            client.compress(
+            await client.compress(
                 system_name=system_name,
                 source_path=remote_directory,
                 target_path=remote_archive_path,
@@ -326,6 +328,7 @@ def firecrest_pull_new_or_updated_files(
                 account=firecrest_account,
                 blocking=True,
             )
+            break
         except f7t.FirecrestException as e:
             # We try a few times since compression can fail with error:
             # `Remote process failed with exit status:1 and error message:tar: <file_name>:
@@ -334,7 +337,7 @@ def firecrest_pull_new_or_updated_files(
                 raise e
 
             print(f"Compression attempt failed with error: {e}. Retrying...")
-            time.sleep(5)
+            await asyncio.sleep(5)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_archive_path = os.path.join(tmpdir, "firecrest_pull_sync.tar.gz")
@@ -343,7 +346,7 @@ def firecrest_pull_new_or_updated_files(
             f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
             f"Downloading remote archive {remote_archive_path} to {local_archive_path}."
         )
-        client.download(
+        await client.download(
             system_name=system_name,
             source_path=remote_archive_path,
             target_path=local_archive_path,
@@ -376,7 +379,7 @@ def firecrest_pull_new_or_updated_files(
             f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}: "
             f"Removing remote archive {remote_archive_path}."
         )
-        client.rm(
+        await client.rm(
             system_name=system_name,
             path=remote_archive_path,
             account=firecrest_account,
@@ -394,17 +397,17 @@ def firecrest_pull_new_or_updated_files(
     )
 
 
-def main():
+async def main():
     client_id = os.getenv("FIRECREST_CLIENT_ID")
     client_secret = os.getenv("FIRECREST_CLIENT_SECRET")
     token_uri = os.getenv("AUTH_TOKEN_URL")
     firecrest_url = os.getenv("FIRECREST_URL")
     system_name = os.getenv("FIRECREST_SYSTEM")
-    training_workdir = os.getenv("FIRECREST_WORKDIR")
+    # training_workdir = os.getenv("FIRECREST_WORKDIR")
     firecrest_account = os.getenv("FIRECREST_ACCOUNT")
-    remote_system_user = os.getenv("FIRECREST_USER")
+    # remote_system_user = os.getenv("FIRECREST_USER")
 
-    client = f7t.v2.Firecrest(
+    client = f7t.v2.AsyncFirecrest(
         firecrest_url=firecrest_url,
         authorization=f7t.ClientCredentialsAuth(
             client_id,
@@ -417,31 +420,31 @@ def main():
         local_dir = sys.argv[2]
         remote_dir = sys.argv[3]
         while True:
-            firecrest_push_new_or_updated_files(
+            await firecrest_push_new_or_updated_files(
                 client,
                 system_name,
                 local_dir,
                 remote_dir,
                 firecrest_account,
             )
-            time.sleep(10)
+            await asyncio.sleep(10)
 
     elif sys.argv[1] == "pull_directory":
         remote_dir = sys.argv[2]
         local_dir = sys.argv[3]
         while True:
-            firecrest_pull_new_or_updated_files(
+            await firecrest_pull_new_or_updated_files(
                 client,
                 system_name,
                 remote_dir,
                 local_dir,
                 firecrest_account,
             )
-            time.sleep(10)
+            await asyncio.sleep(10)
 
     else:
         print("Usage: python firecrest-python-utils.py pull_directory <remote_dir> <local_dir> | push_directory <local_dir> <remote_basedir>")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
