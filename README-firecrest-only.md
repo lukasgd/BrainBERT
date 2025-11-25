@@ -41,7 +41,7 @@ In the same directory, also build a local environment for monitoring with MLflow
 (cd .. && \
     python -m venv --system-site-packages local-venv && \
     . local-venv/bin/activate && \
-    pip install mlflow "pyfirecrest>=3.5.1")
+    pip install mlflow "pyfirecrest>=3.6.0")
 ```
 
 or a container
