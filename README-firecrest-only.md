@@ -4,6 +4,7 @@ Set up a new working directory on a client machine as follows:
 
 ```bash
 mkdir local-storage
+mkdir remote-storage
 ```
 
 ## Obtain data and code on the client
@@ -12,7 +13,13 @@ Download braintreebank.dev data to the local storage
 
 ```bash
 cd local-storage
-wget -r -np -nH --cut-dirs=1 -R "index.html*" https://braintreebank.dev/data/
+wget --mirror --no-parent --cut-dirs=1 --accept zip,json,ipynb --reject-regex '\?' https://braintreebank.dev/data/
+```
+
+or using multithreading with
+
+```bash
+wget2 --mirror --no-parent --cut-dirs=1 --max-threads=$(($(nproc)/2)) --accept zip,json,ipynb --reject-regex '\?' https://braintreebank.dev/data/
 ```
 
 Optionally, download pretrained weights from the Google Drive link as detailed in Readme to `local-storage/`.
@@ -72,12 +79,13 @@ export FIRECREST_WORKDIR="/iopsstor/scratch/cscs/${FIRECREST_USER:?}/test-brainb
 An example job submission then looks as
 
 ```python
+import os
 import json
 import firecrest as f7t
 
 # initialize PyFirecREST
-client_id = "..."
-client_secret = "..."
+client_id = os.environ["FIRECREST_CLIENT_ID"]
+client_secret = os.environ["FIRECREST_CLIENT_SECRET"]
 token_uri = "https://auth.cscs.ch/auth/realms/firecrest-clients/protocol/openid-connect/token"
 
 client = f7t.v2.Firecrest(
@@ -188,7 +196,7 @@ CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
 sbatch slurm/submit-build-image-offline.sh
 ```
 
-which on a compute node evaluates to
+which on a compute node configures podman storage in `$HOME/.config/containers/storage.conf` if not done previously and then evaluates to
 
 ```bash
 podman load -i build_deps/images/localhost-${USER}-ngc-brainbert+25.06-download-linux-arm64.tar
@@ -209,8 +217,6 @@ f7t_build_job=$(firecrest submit \
 
 firecrest_job_wait_and_extract_status "${f7t_build_job}"
 ```
-
-> **TODO:** Address `podman load -i` error when invoked through FirecREST.
 
 ## Run BrainBERT pretraining
 

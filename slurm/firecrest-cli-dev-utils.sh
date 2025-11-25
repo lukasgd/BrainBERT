@@ -1,6 +1,6 @@
-# Run shell commands via Firecrest, e.g.
-# firecrest_run_cmd echo \$\(hostname\): \"Hello world!\"
-# INSIDE_CONTAINER=1 firecrest_run_cmd 'echo $(hostname): "Hello world!"'
+# Run srun-like commands via Firecrest, e.g.
+# firecrest_run_cmd -N2 -n4 echo \$\(hostname\): \"Hello world!\"
+# INSIDE_CONTAINER=1 firecrest_run_cmd --ntasks-per-node 3 'echo $(hostname): "Hello world!"'
 
 function firecrest_run_cmd() {
 
@@ -12,10 +12,29 @@ function firecrest_run_cmd() {
 #SBATCH --job-name brainbert-cmd
 #SBATCH --time 1:00:00
 #SBATCH --output outputs/logs/%x-%j.out
-#SBATCH --nodes 2
-#SBATCH --ntasks-per-node 1
 #SBATCH --gpus-per-node 4
-##SBATCH -w nid007671
+OUTER_EOF
+
+    while [[ "$#" -gt 1 ]]; do  # don't consume the command
+        case $1 in
+            -*)
+                # Add SBATCH parameters to the script
+                # If the next argument doesn't start with --, it's a key-value pair
+                if [[ "$2" != --* && -n "$2" && "$#" -gt 2 ]]; then
+                    echo "#SBATCH $1 $2" >> "$script_name"
+
+                    shift
+                else
+                    # flags without a value
+                    echo "#SBATCH $1" >> "$script_name"
+                fi
+                ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    cat >> "$script_name" <<'OUTER_EOF'
 
 set -euxo pipefail
 

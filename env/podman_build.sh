@@ -12,10 +12,11 @@ function print_help_and_exit() {
     echo "else under /capstor/scratch/cscs/\$USER/ce-images/."
     echo ""
     echo "Supported options:"
-    echo "  --prepare-offline    Prepare offline build in build_deps/ (requires --base-image)"
-    echo "  --build-offline      Build image offline (requires --base-image and prepared build_deps/)"
-    echo "  --platform <arch>    Set the target platform for the build (e.g., linux/arm64)"
-    echo "  --help               Display this help message and exit"
+    echo "  --platform <arch>               Set the target platform for the build (e.g., linux/arm64)"
+    echo "  --container-runtime <runtime>   Container engine to use (either podman or docker)"
+    echo "  --prepare-offline               Prepare offline build in build_deps/ (requires --base-image)"
+    echo "  --build-offline                 Build image offline (requires --base-image and prepared build_deps/)"
+    echo "  --help                          Display this help message and exit"
     echo ""
     echo "Examples (online build, for development and production):"
     echo "  $0 ngc-pytorch:25.06 -f env/Dockerfile.dev --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 ."
@@ -46,6 +47,10 @@ while [[ $# -gt 0 ]]; do
             PLATFORM_ARCH="$2"
             shift 2
             ;;
+        --container-runtime)
+            CONTAINER_RUNTIME="$2"
+            shift
+            ;;
         --help)
             print_help_and_exit
             ;;
@@ -64,15 +69,29 @@ fi
 
 IMAGE=$1
 
-if command -v podman >/dev/null 2>&1; then
-    echo "Using Podman for building the image."
-    CONTAINER_RUNTIME="podman"
-elif command -v docker >/dev/null 2>&1; then
-    echo "Podman/Enroot not found. Falling back to Docker."
-    CONTAINER_RUNTIME="docker"
-else
-    echo "Error: This script requires 'podman' or 'docker' installed." >&2
-    exit 1
+if [ -z "${CONTAINER_RUNTIME:-}" ]; then
+    if command -v podman >/dev/null 2>&1; then
+        echo "Using Podman for building the image."
+        CONTAINER_RUNTIME="podman"
+
+    elif command -v docker >/dev/null 2>&1; then
+        echo "Podman/Enroot not found. Falling back to Docker."
+        CONTAINER_RUNTIME="docker"
+    else
+        echo "Error: This script requires 'podman' or 'docker' installed." >&2
+        exit 1
+    fi
+fi
+
+# Configure podman's storage to use /dev/shm if not already configured
+if [ "${INFRANAME:-}" = "alps" ] && [ ! -f $HOME/.config/containers/storage.conf ] ; then
+    mkdir -p $HOME/.config/containers
+    cat <<EOF > $HOME/.config/containers/storage.conf
+[storage]
+driver = "overlay"
+runroot = "/dev/shm/$USER/runroot"
+graphroot = "/dev/shm/$USER/root"
+EOF
 fi
 
 if command -v enroot >/dev/null 2>&1 && [ ! ${PREPARE_OFFLINE:-0} -eq 1 ]; then
@@ -86,7 +105,11 @@ if command -v enroot >/dev/null 2>&1 && [ ! ${PREPARE_OFFLINE:-0} -eq 1 ]; then
     mkdir -p "$(dirname "$SQSH_FILE")"
 fi
 
-IMAGE_NAME=localhost/${FIRECREST_USER:-$USER}/$IMAGE  # local image name
+if [ "${INFRANAME:-}" = "alps" ]; then
+    IMAGE_NAME=localhost/${USER}/$IMAGE  # local image name
+else
+    IMAGE_NAME=localhost/${FIRECREST_USER:?}/$IMAGE  # local image name
+fi
 
 if [ ${PREPARE_OFFLINE:-0} -eq 1 ] || [ ${BUILD_OFFLINE:-0} -eq 1 ]; then
 
