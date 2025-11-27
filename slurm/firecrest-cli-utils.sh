@@ -101,7 +101,20 @@ function firecrest_batch_upload() {
 
 # Batch download function not yet implemented (needs list of files)
 
-# TODO
+function firecrest_batch_download() {
+
+    for filename in "$@"; do
+        mkdir -p "$(dirname $filename)"
+        set -x
+        firecrest --debug download \
+            --account ${FIRECREST_ACCOUNT:?} \
+            "${FIRECREST_WORKDIR:?}/$filename" $filename
+        set +x
+
+    done
+
+}
+
 
 # Repeatedly download stdout until it can extract the working directory
 
@@ -228,4 +241,73 @@ function firecrest_sync_new_or_updated_files() {
 
         sleep 5
     done
+}
+
+
+# Run srun-like commands via Firecrest
+# Examples:
+# firecrest_run_cmd -N 2 -n 4 -- echo \$\(hostname\): \"Hello world!\"
+# FIRECREST_USE_CONTAINER=1 firecrest_run_cmd --nodes 2 --ntasks-per-node 4 -- 'echo "Running nccl-tests on $(hostname)"; all_reduce_perf -b 8 -e 8G -f 2 -g 1 -c 1 -n 20 -w 5'
+
+function firecrest_run_cmd() {
+
+    local script_name=$(mktemp run_cmd-XXXXXX.sh)
+
+    cat > "$script_name" <<'EOF'
+#!/bin/bash -l
+
+#SBATCH --job-name brainbert-cmd
+#SBATCH --time 1:00:00
+#SBATCH --output outputs/logs/%x-%j.out
+#SBATCH --gpus-per-node 4
+EOF
+
+    while [[ "$#" -gt 1 ]]; do  # don't consume the command
+        case $1 in
+            --) shift; break ;;
+            -*)
+                # Add SBATCH parameters to the script
+                # If the next argument doesn't start with --, it's a key-value pair
+                if [[ "$2" != -* && -n "$2" && "$#" -gt 2 ]]; then
+                    echo "#SBATCH $1 $2" >> "$script_name"
+
+                    shift
+                else
+                    # flags without a value
+                    echo "#SBATCH $1" >> "$script_name"
+                fi
+                ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    cat >> "$script_name" <<'EOF'
+
+set -euxo pipefail
+
+srun -u \
+EOF
+    echo "${FIRECREST_USE_CONTAINER:+--environment ./env/ngc-brainbert-25.06.toml} \\" >> "$script_name"
+    echo "$@" >> "$script_name"
+
+    chmod u+x "$script_name"
+
+    cat $script_name
+
+    f7t_job=$(firecrest submit \
+        --account ${FIRECREST_ACCOUNT:?} \
+        --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+        --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
+        $script_name)
+
+    firecrest_job_wait_and_extract_status "${f7t_job}"
+
+    f7t_job_stdout_local=$(firecrest_job_download_stdout "${f7t_job_name}" "${f7t_job_id}")
+
+    cat $f7t_job_stdout_local
+
+    echo "--- stdout saved to ${f7t_job_stdout_local} ---"
+
+    rm $script_name
 }
