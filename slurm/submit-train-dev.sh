@@ -20,6 +20,7 @@ export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 srun -ul --environment ./env/ngc-pytorch-25.06.toml bash -c "
     . venv-pt-25.06/bin/activate
     MLFLOW_SYSTEM_METRICS_NODE_ID=r\${SLURM_PROCID}-$(hostname) \
+    HYDRA_FULL_ERROR=1 \
     MASTER_ADDR=\$(scontrol show hostnames \$SLURM_JOB_NODELIST | head -n 1) \
     MASTER_PORT=29500 \
     RANK=\${SLURM_PROCID} \

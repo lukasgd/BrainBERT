@@ -1,7 +1,7 @@
 #!/bin/bash -l
 
 #SBATCH --job-name brainbert
-#SBATCH --time 1:00:00
+#SBATCH --time 12:00:00
 #SBATCH --output outputs/logs/%x-%j.out
 #SBATCH --nodes 2
 #SBATCH --ntasks-per-node 4
@@ -19,6 +19,7 @@ export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 
 srun -ul --environment ./env/ngc-brainbert-25.06.toml bash -c "
     MLFLOW_SYSTEM_METRICS_NODE_ID=r\${SLURM_PROCID}-$(hostname) \
+    HYDRA_FULL_ERROR=1 \
     MASTER_ADDR=\$(scontrol show hostnames \$SLURM_JOB_NODELIST | head -n 1) \
     MASTER_PORT=29500 \
     RANK=\${SLURM_PROCID} \

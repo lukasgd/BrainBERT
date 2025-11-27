@@ -1,0 +1,27 @@
+#!/bin/bash -l
+
+#SBATCH --job-name brainbert-benchy
+#SBATCH --time 1:00:00
+#SBATCH --output outputs/logs/%x-%j.out
+#SBATCH --nodes 2
+#SBATCH --ntasks-per-node 4
+#SBATCH --gpus-per-node 4
+
+set -euxo pipefail
+
+export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
+
+
+srun -ul --environment ./env/ngc-brainbert-25.06.toml bash -c "
+    ENABLE_BENCHY_TRAIN=1 \
+    BENCHY_CONFIG_FILE=\$PWD/profiling/benchy_train.yaml \
+    BENCHY_OUTPUT_FILE=$PWD/outputs/logs/benchy_output-${SLURM_JOB_NAME}-${SLURM_JOBID}.json \
+    HYDRA_FULL_ERROR=1 \
+    MASTER_ADDR=\$(scontrol show hostnames \$SLURM_JOB_NODELIST | head -n 1) \
+    MASTER_PORT=29500 \
+    RANK=\${SLURM_PROCID} \
+    LOCAL_RANK=\${SLURM_LOCALID} \
+    WORLD_SIZE=\${SLURM_NTASKS} \
+    python3 run_train.py hydra.run.dir=${HYDRA_BASE_RUN_DIR:-$PWD/outputs}/$(date +'%Y-%m-%d/%H-%M-%S')-${SLURM_JOB_ID} +exp=spec2vec ++exp.runner.device=cuda ++exp.runner.dist_gpu=True ++task.dist_gpu=True ++exp.runner.num_workers=16 +data=masked_spec +model=masked_tf_model_large +data.data=${PRETRAIN_DATA_DIR}/manifests ++data.format=h5 ++data.val_split=0.01 +task=fixed_mask_pretrain.yaml +criterion=pretrain_masked_criterion +preprocessor=stft ++data.test_split=0.01 ++task.freq_mask_p=0.05 ++task.time_mask_p=0.05 ++exp.runner.total_steps=500000 ++exp.runner.scheduler.name=reduce_on_plateau
+"
+
