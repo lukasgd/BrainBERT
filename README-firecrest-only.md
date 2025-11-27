@@ -67,7 +67,18 @@ cd ../..
 
 In order to transfer data and submit jobs to Clariden, set up [PyFirecREST](https://pyfirecrest.readthedocs.io/). This is a client package for [FirecREST](https://eth-cscs.github.io/firecrest-v2/openapi), which is a REST API to interface with Alps. Follow the instructions at https://docs.cscs.ch/access/firecrest/ and create an application `brainbert` on the [developer portal](https://docs.cscs.ch/services/devportal/) [https://developer.cscs.ch]() that is subscribed to the `FirecREST-ML - v2` API to use it in the following.
 
-After some initialization, the client is ready to submit jobs and launch data transfers on Clariden. For the rest of this workflow, we assume that on the client machine the user name for Clariden is captured in `${FIRECREST_USER}` and the account in `${FIRECREST_ACCOUNT}` (consistent with `firecrest id -s clariden`). Since we are only targeting the Clariden system, we will additionally set `${FIRECREST_SYSTEM}` to `clariden` on the client. Finally, we choose a path in `${FIRECREST_WORKDIR}` that serves as a base directory for all data generated during this workflow. A typical choice can be under `${SCRATCH}`. The overall configuration then looks like
+Export the credentials obtained there in your local shell environment and configure authentication and API URL as in
+
+```bash
+export FIRECREST_CLIENT_ID=...
+export FIRECREST_CLIENT_SECRET=...
+export AUTH_TOKEN_URL="https://auth.cscs.ch/auth/realms/firecrest-clients/protocol/openid-connect/token"
+export FIRECREST_URL="https://api.cscs.ch/ml/firecrest/v2
+```
+
+This is used by the client to generate a token and make requests afterwards to Firecrest. That is after some initialization as shown below, the client is ready to submit jobs and launch data transfers to/from Clariden.
+
+For the rest of this workflow, we assume that on the client machine the user name for Clariden is captured in `${FIRECREST_USER}` and the account in `${FIRECREST_ACCOUNT}` (consistent with `firecrest id -s clariden`). Since we are only targeting the Clariden system, we will additionally set `${FIRECREST_SYSTEM}` to `clariden` on the client. Finally, we choose a path in `${FIRECREST_WORKDIR}` that serves as a base directory for all data generated during this workflow. A typical choice can be under `${SCRATCH}`. The additional configuration then looks like
 
 ```bash
 export FIRECREST_USER=...
@@ -76,7 +87,7 @@ export FIRECREST_SYSTEM="clariden"
 export FIRECREST_WORKDIR="/iopsstor/scratch/cscs/${FIRECREST_USER:?}/test-brainbert"
 ```
 
-An example job submission then looks as
+An example job submission in Python then looks as
 
 ```python
 import os
@@ -105,22 +116,13 @@ client.wait_for_job(
 )
 ```
 
-This can be run inside the `local-venv` or the local container created previously with PyFirecREST installed, in the latter case run e.g.
+This can be run from the `local-venv` or the local container created previously with PyFirecREST installed, in the latter case run e.g.
 
 ```bash
 docker run -it --rm -v $(pwd):$(pwd) -w $(pwd) ngc-brainbert:25.06
 ```
 
-Alternatively to the Python script, you can directly use PyFirecREST's CLI, `firecrest`. This requires the additional configuration
-
-```bash
-export FIRECREST_CLIENT_ID="..."
-export FIRECREST_CLIENT_SECRET="..."
-export AUTH_TOKEN_URL="https://auth.cscs.ch/auth/realms/firecrest-clients/protocol/openid-connect/token"
-export FIRECREST_URL="https://api.cscs.ch/ml/firecrest/v2
-```
-
-To create a new directory `${FIRECREST_WORKDIR}` on Clariden, run
+Alternatively to the Python script, you can directly use PyFirecREST's CLI, `firecrest`. To e.g. create a new directory `${FIRECREST_WORKDIR}` on Clariden, run
 
 ```bash
 firecrest mkdir -p \
@@ -172,10 +174,7 @@ again with the same defaults if arguments are omitted. Jobs generally redirect s
 Now, copy the pretraining dataset (and optionally weights) to remote storage via
 
 ```bash
-tar -cvf braintreebank.dev.tar -C local-storage braintreebank.dev
-firecrest --debug upload \
-    --account ${FIRECREST_ACCOUNT:?} \
-    braintreebank.dev.tar ${FIRECREST_WORKDIR:?} braintreebank.dev.tar
+(cd local-storage && firecrest_batch_upload $(find braintreebank.dev -type f))
 ```
 
 This takes ~24 mins for 12 GB (~8 % of the pretraining dataset) over a VPN connection.
@@ -329,7 +328,7 @@ f7t_train_job=$(firecrest submit \
 firecrest_job_wait_and_extract_status "${f7t_train_job}"
 ```
 
-## Synchronize output directories
+### Synchronize output directories
 
 You can follow the progress of the job by synchronizing `${FIRECREST_WORKDIR:?}/BrainBERT/outputs/YY-MM-DD/HH-MM-SS` and possibly `mlruns` to local storage under `BrainBERT/outputs` (identical directory structure).
 
@@ -355,3 +354,20 @@ and inspect the results at `http://127.0.0.1:5000/`.
 ### Inspect results upon completion
 
 Upon completion, the saved checkpoints can be accessed under `outputs/YY-MM-DD/HH-MM-SS` as `checkpoint_best.pth` as well as `checkpoint_last.pth`.
+
+
+## Benchmark data loading performance
+
+In order to identify possible data loading bottlenecks, submit a training run with benchy enabled. This will measure throughput in three phases - pure data loading from storage, training on data pre-loaded into memory (synthetic) and full end-to-end training on data from storage. The results are printed to stdout upon completion (use `grep 'BENCHY::' brainbert-benchy-<jobid>.out`).
+
+```bash
+f7t_benchy_job=$(firecrest submit \
+    --account ${FIRECREST_ACCOUNT:?} \
+    --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+    --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
+    --env-var PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
+    --env-var HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
+    BrainBERT/slurm/submit-train-benchy.sh)
+
+firecrest_job_wait_and_extract_status "${f7t_benchy_job}"
+```
