@@ -26,11 +26,11 @@ class PretrainMaskedCriterion(BaseCriterion):
         non_zero = torch.mean(torch.abs(true_activity[non_zero_idxs] - predicted[non_zero_idxs]))
         content_aware_loss = self.cfg.alpha*non_zero
         loss = l1 + content_aware_loss
-        output_log_spec = output[1].detach().cpu()
+        output_log_spec = output[0].detach().cpu()
         content_l1 = non_zero
-        wav = batch["wavs"][1]
-        images = {"input_spectrogram": masked_input[1].detach().cpu(),
-                  "ground_truth": labels[1].detach().cpu(),
+        wav = batch["wavs"][0]
+        images = {"input_spectrogram": masked_input[0].detach().cpu(),
+                  "ground_truth": labels[0].detach().cpu(),
                   "pred_spectrogram": output_log_spec,
                   "pos_enc": pos_enc[0].detach().cpu(),
                   "wav": wav}
