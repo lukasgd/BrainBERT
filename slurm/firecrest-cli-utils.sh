@@ -311,3 +311,56 @@ EOF
 
     rm $script_name
 }
+
+
+# Override sbatch options in script
+# Usage: firecrest_submit_sbatch_override [--sbatch-option value]... -- [firecrest-options]... <script>
+# Example:
+# firecrest_submit_sbatch_override --nodes 4 --time 24:00:00 -- --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images slurm/submit-train-prod.sh
+firecrest_submit_sbatch_override() {
+    local -a sbatch_args=()
+    local -a firecrest_args=()
+
+    # SBATCH options must be separated from firecrest options by --
+    [[ " $* " == *" -- "* ]] || \
+    { echo "Error: Missing '--' separator between sbatch and firecrest options" >&2; return 1; }
+
+    # Parse SBATCH options
+    while [[ $# -gt 0 && "$1" != "--" ]]; do
+        sbatch_args+=("${1#--}" "$2")
+        shift 2
+    done
+
+    # Skip the -- separator
+    [[ "$1" == "--" ]] && shift
+
+    # Remaining args go to firecrest (options + script at the end)
+    firecrest_args=("$@")
+
+    local script="${firecrest_args[-1]}"
+    [[ -n "$script" ]] || { echo "Error: No script specified" >&2; return 1; }
+    [[ -f "$script" ]] || { echo "Error: Script '$script' not found" >&2; return 1; }
+
+    local tmpscript
+    tmpscript=$(mktemp --suffix=.sh)
+    cp "$script" "$tmpscript"
+
+    local i=0
+    while [[ $i -lt ${#sbatch_args[@]} ]]; do
+        local key="${sbatch_args[$i]}"
+        local val="${sbatch_args[$((i+1))]}"
+        if grep -q "^#SBATCH --${key}" "$tmpscript"; then  # override existing option
+            sed -i "s|^#SBATCH --${key}.*|#SBATCH --${key} ${val}|" "$tmpscript"
+        else  # add new option
+            sed -i "/^#SBATCH/a #SBATCH --${key} ${val}" "$tmpscript"
+        fi
+        ((i+=2))
+    done
+
+    firecrest_args[-1]="$tmpscript"  # submit the modified script
+
+    firecrest submit "${firecrest_args[@]}"
+    local rc=$?
+    rm -f "$tmpscript"
+    return $rc
+}
