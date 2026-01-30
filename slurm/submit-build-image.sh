@@ -11,5 +11,5 @@
 set -euxo pipefail
 
 srun -ul bash -c "
-    env/podman_build.sh --base-image nvcr.io/nvidia/pytorch:25.06-py3 ngc-brainbert:25.06 -f env/Dockerfile.prod .
+    env/podman_build.sh ngc-brainbert:25.06 -f env/Dockerfile.prod --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 .
 "
