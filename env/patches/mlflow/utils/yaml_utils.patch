@@ -1,0 +1,68 @@
+--- /usr/local/lib/python3.12/dist-packages/mlflow/utils/yaml_utils.py	2026-02-02 18:42:26.000000000 +0000
++++ /usr/local/lib/python3.12/dist-packages/mlflow/utils/yaml_utils_fixed.py	2026-02-02 18:54:37.596449512 +0000
+@@ -54,8 +54,7 @@
+ def overwrite_yaml(root, file_name, data, ensure_yaml_extension=True):
+     """Safely overwrites a preexisting yaml file, ensuring that file contents are not deleted or
+     corrupted if the write fails. This is achieved by writing contents to a temporary file
+-    and moving the temporary file to replace the preexisting file, rather than opening the
+-    preexisting file for a direct write.
++    in the SAME directory and using os.replace() for atomic rename.
+ 
+     Args:
+         root: Directory name.
+@@ -65,24 +64,45 @@
+     """
+     tmp_file_path = None
+     original_file_path = os.path.join(root, file_name)
+-    original_file_mode = os.stat(original_file_path).st_mode
++    if ensure_yaml_extension and not original_file_path.endswith(".yaml"):
++        original_file_path = original_file_path + ".yaml"
++    
+     try:
+-        tmp_file_fd, tmp_file_path = tempfile.mkstemp(suffix="file.yaml")
+-        os.close(tmp_file_fd)
+-        write_yaml(
+-            root=get_parent_dir(tmp_file_path),
+-            file_name=os.path.basename(tmp_file_path),
+-            data=data,
+-            overwrite=True,
+-            sort_keys=True,
+-            ensure_yaml_extension=ensure_yaml_extension,
++        original_file_mode = os.stat(original_file_path).st_mode
++    except FileNotFoundError:
++        original_file_mode = 0o644  # Default permissions if file doesn't exist
++    
++    try:
++        # Create temp file in the SAME directory as target to ensure atomic rename on NFS
++        tmp_file_fd, tmp_file_path = tempfile.mkstemp(
++            suffix=".yaml.tmp",
++            dir=root  # Same directory ensures atomic rename on same filesystem
+         )
+-        shutil.move(tmp_file_path, original_file_path)
+-        # restores original file permissions, see https://docs.python.org/3/library/tempfile.html#tempfile.mkstemp
++        os.close(tmp_file_fd)
++        
++        # Write data to temp file
++        with codecs.open(tmp_file_path, mode="w", encoding=ENCODING) as yaml_file:
++            yaml.dump(
++                data,
++                yaml_file,
++                default_flow_style=False,
++                allow_unicode=True,
++                sort_keys=True,
++                Dumper=YamlSafeDumper,
++            )
++        
++        # Atomic rename - os.replace() is atomic on POSIX when src and dst are on same filesystem
++        os.replace(tmp_file_path, original_file_path)
++        
++        # Restore original file permissions
+         os.chmod(original_file_path, original_file_mode)
+     finally:
++        # Clean up temp file if it still exists (rename failed)
+         if tmp_file_path is not None and os.path.exists(tmp_file_path):
+-            os.remove(tmp_file_path)
++            try:
++                os.remove(tmp_file_path)
++            except OSError:
++                pass

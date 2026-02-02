@@ -24,5 +24,6 @@ RUN pip install -v --no-build-isolation --no-cache --no-dependencies \
     pip install -v --no-build-isolation --no-cache \
       -r /dev/stdin
 
-RUN cd $(python -c "import site; print(site.getsitepackages()[0])")/mlflow \
-    && patch mlflow/store/tracking/file_store.py < mlflow/store/tracking/file_store.patch
+RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") \
+    && patch $SITE_PACKAGES/mlflow/store/tracking/file_store.py < env/patches/mlflow/store/tracking/file_store.patch \
+    && patch $SITE_PACKAGES/mlflow/utils/yaml_utils.py <env/patches/mlflow/utils/yaml_utils.patch
