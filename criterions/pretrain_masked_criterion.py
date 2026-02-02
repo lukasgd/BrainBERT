@@ -34,10 +34,10 @@ class PretrainMaskedCriterion(BaseCriterion):
                   "pred_spectrogram": output_log_spec,
                   "pos_enc": pos_enc[0].detach().cpu(),
                   "wav": wav}
-        logging_output = {"loss": loss.item(), 
+        logging_output = {"loss": loss.detach().item(), 
                           "images": images,
-                          "l1_loss": l1.item(),
-                          "content_l1": content_l1.item(),
-                          "content_aware_loss": content_aware_loss.item()}
+                          "l1_loss": l1.detach().item(),
+                          "content_l1": content_l1.detach().item(),
+                          "content_aware_loss": content_aware_loss.detach().item()}
         return loss, logging_output
 

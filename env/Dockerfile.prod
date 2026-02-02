@@ -23,3 +23,6 @@ RUN pip install -v --no-build-isolation --no-cache --no-dependencies \
     && grep -v 'torch_optimizer' requirements.txt | \
     pip install -v --no-build-isolation --no-cache \
       -r /dev/stdin
+
+RUN cd $(python -c "import site; print(site.getsitepackages()[0])")/mlflow \
+    && patch mlflow/store/tracking/file_store.py < mlflow/store/tracking/file_store.patch

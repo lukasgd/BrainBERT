@@ -42,7 +42,7 @@ class Runner():
             log.info(f'Using DDP with device {torch.cuda.current_device()} on local_rank {self.local_rank}')
 
             self.model.to(self.device)
-            self.model = DDP(self.model, device_ids=[self.local_rank], find_unused_parameters=True)
+            self.model = DDP(self.model, device_ids=[self.local_rank], find_unused_parameters=False)
 
         elif cfg.multi_gpu:
             self.model = torch.nn.DataParallel(self.model)
