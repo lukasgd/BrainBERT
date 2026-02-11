@@ -212,9 +212,13 @@ class Runner():
             if self.cfg.checkpoint_step > -1:
                 self.save_checkpoints()
 
-            if 'profiler' in self.cfg and self.cfg.profiler:
+            if 'profile_ranks' in self.cfg and (
+                self.cfg.profile_ranks == 'all' or 
+                int(os.environ.get("SLURM_PROCID", 0)) in self.cfg.profile_ranks):
+                profiler_schedule_args = self.cfg.profiler_schedule if 'profiler_schedule' in self.cfg \
+                    else dict(wait=5, warmup=3, active=2)
                 with torch.profiler.profile(
-                    schedule=torch.profiler.schedule(wait=5, warmup=2, active=3),
+                    schedule=torch.profiler.schedule(**profiler_schedule_args),
                     on_trace_ready=profile_trace_handler,
                     with_stack=True,
                     experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
@@ -248,4 +252,4 @@ class Runner():
 
 def profile_trace_handler(p):
     p.export_chrome_trace(
-        f"pytorch_trace_s{p.step_num}_r{os.environ.get("SLURM_PROCID", 0)}.json")
+        f"pytorch_trace_s{p.step_num}_r{os.environ.get('SLURM_PROCID', 0)}.json")

@@ -95,9 +95,9 @@ Example parameters:
 > ```
 
 > [!TIP]
-> **Alps**: For **profiling**, use the Pytorch profiler (`++exp.runner.profiler=True`) to acquire a trace with stack resolution over a few training steps (`++exp.runner.total_steps=10`) with (optionally) a reduced amount of data (`++data.max_samples=1000`). The learning rate schedule needs to be modified to avoid crashes (`++exp.runner.scheduler.name=reduce_on_plateau`).
+> **Alps**: For **profiling**, use the Pytorch profiler (`++exp.runner.profile_ranks=all`) to acquire a trace with stack resolution over a few training steps (`++exp.runner.total_steps=10`). To only profile a select few ranks, e.g. the first and second, use `++exp.runner.profile_ranks=[0,1]`. Optionally, a reduced amount of data can be used (`++data.max_samples=1000`). The learning rate schedule needs to be modified to avoid crashes (`++exp.runner.scheduler.name=reduce_on_plateau`).
 > ```bash
-> python3 run_train.py +exp=spec2vec ++exp.runner.device=cuda ++exp.runner.multi_gpu=True ++exp.runner.num_workers=64 +data=masked_spec +model=masked_tf_model_large +data.data=$SCRATCH/BrainBERT/pretrain_data/manifests ++data.format=h5 ++data.val_split=0.01 +task=fixed_mask_pretrain.yaml +criterion=pretrain_masked_criterion +preprocessor=stft ++data.test_split=0.01 ++task.freq_mask_p=0.05 ++task.time_mask_p=0.05 ++exp.runner.profiler=True ++exp.runner.total_steps=10 ++data.max_samples=1000 ++exp.runner.scheduler.name=reduce_on_plateau
+> python3 run_train.py +exp=spec2vec ++exp.runner.device=cuda ++exp.runner.multi_gpu=True ++exp.runner.num_workers=64 +data=masked_spec +model=masked_tf_model_large +data.data=$SCRATCH/BrainBERT/pretrain_data/manifests ++data.format=h5 ++data.val_split=0.01 +task=fixed_mask_pretrain.yaml +criterion=pretrain_masked_criterion +preprocessor=stft ++data.test_split=0.01 ++task.freq_mask_p=0.05 ++task.time_mask_p=0.05 ++exp.runner.profile_ranks=[0,1] ++exp.runner.profiler_schedule='{wait: 5, warmup: 3, active:2}' ++exp.runner.total_steps=10 ++data.max_samples=1000 ++exp.runner.scheduler.name=reduce_on_plateau
 > ```
 > The resulting trace file `pytorch_trace_s<step_num>_r<rank_num>.json` can be inspected in https://ui.perfetto.dev/.
 
