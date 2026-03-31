@@ -1,0 +1,21 @@
+image = "${CE_IMAGES}/ngc-brainbert+25.12-alps2.sqsh"
+
+mounts = [
+    "${SCRATCH}",
+]
+
+workdir = "/workspace/BrainBERT"
+
+writable = true
+
+[env]
+FI_MR_CACHE_MAX_SIZE = "-1"
+FI_MR_CACHE_MAX_COUNT = "524288"
+OFI_NCCL_DISABLE_DMABUF = "1"
+FI_CXI_SAFE_DEVMEM_COPY_THRESHOLD = "16777216"
+NCCL_SOCKET_IFNAME = "hsn"
+
+[annotations]
+com.hooks.cxi.enabled="false"
+com.hooks.dcgm.enabled = "true"
+

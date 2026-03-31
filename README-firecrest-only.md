@@ -358,7 +358,7 @@ Upon completion, the saved checkpoints can be accessed under `outputs/YY-MM-DD/H
 
 ## Benchmark data loading performance
 
-In order to identify possible data loading bottlenecks, submit a training run with benchy enabled. This will measure throughput in three phases - pure data loading from storage, training on data pre-loaded into memory (synthetic) and full end-to-end training on data from storage. The results are printed to stdout upon completion (use `grep 'BENCHY::' brainbert-benchy-<jobid>.out`).
+In order to identify possible data loading bottlenecks, submit a training run with benchy enabled. This will measure throughput in three phases - pure data loading from storage, training on data pre-loaded into memory (synthetic) and full end-to-end training on data from storage. The results are printed to stdout upon completion (use `grep 'BENCHY::' brainbert-benchy-<jobid>.out`). By default, this uses per-rank dataset replication and shuffling (`BENCHY_FULL_DATASET_ON_EACH_RANK=1`), to avoid measuring cached dataset access at scale due to sharding.
 
 ```bash
 f7t_benchy_job=$(firecrest submit \
@@ -370,4 +370,18 @@ f7t_benchy_job=$(firecrest submit \
     BrainBERT/slurm/submit-train-benchy.sh)
 
 firecrest_job_wait_and_extract_status "${f7t_benchy_job}"
+```
+
+When running benchmarks, it is good practice, to do so in isolatation, i.e. use
+
+```bash
+for n in 1 2 4 8 16 32 64 72 80; do
+    firecrest_submit_sbatch_override --nodes $n --time 60 --dependency singleton -- \
+    --account ${FIRECREST_ACCOUNT:?} \
+    --working-dir ${FIRECREST_WORKDIR:?}/BrainBERT \
+    --env-var CE_IMAGES=${FIRECREST_WORKDIR:?}/ce-images \
+    --env-var PRETRAIN_DATA_DIR=${FIRECREST_WORKDIR:?}/pretrain_data \
+    --env-var HYDRA_BASE_RUN_DIR=${FIRECREST_WORKDIR:?}/BrainBERT/outputs \
+    BrainBERT/slurm/submit-train-benchy.sh
+done
 ```

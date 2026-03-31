@@ -20,7 +20,7 @@ function print_help_and_exit() {
     echo ""
     echo "Examples (online build, for development and production):"
     echo "  $0 ngc-pytorch:25.06 -f env/Dockerfile.dev --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 ."
-    echo "  $0 ngc-brainbert:25.06 -f env/Dockerfile.prod --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 ."
+    echo "  $0 ngc-brainbert:25.06 -f env/Dockerfile.prod --build-arg BASE_IMAGE=jfrog.svc.cscs.ch/docker-group-csstaff/alps-images/ngc-pytorch:25.12-py3-alps2 ."
     echo ""
     echo "Example (2-stage build, online download, offline build):"
     echo "  $0 --prepare-offline ngc-brainbert:25.06 -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:25.06-py3 ."

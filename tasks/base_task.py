@@ -1,10 +1,19 @@
 import models
 import criterions
+import os
 from torch.utils import data
 import torch
 import torch.distributed as dist
 from datasets import build_dataset
 from tasks.utils import split_dataset
+
+class RankRandomSampler(data.RandomSampler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.run_seed = torch.randint(0, 2**31, (1,)).item()
+
+    def set_epoch(self, epoch):
+        self.generator.manual_seed(self.run_seed + torch.distributed.get_rank() + epoch * 1000)
 
 class BaseTask():
     def __init__(self, cfg):
@@ -50,7 +59,14 @@ class BaseTask():
         if not self.cfg.dist_gpu:
             data_loader = data.DataLoader(dataset, **kwargs)
         else:
-            sampler = data.distributed.DistributedSampler(dataset, shuffle=kwargs.pop('shuffle', True))
+            if os.environ.get("BENCHY_FULL_DATASET_ON_EACH_RANK", '0') == '1':
+                print("Using RankRandomSampler to load the full dataset on each rank with different shuffling")
+                generator = torch.Generator()
+                generator.manual_seed(torch.distributed.get_rank())
+                sampler = RankRandomSampler(dataset, generator=generator)
+                kwargs.pop('shuffle', None)  # sampler and shuffle are mutually exclusive
+            else:
+                sampler = data.distributed.DistributedSampler(dataset, shuffle=kwargs.pop('shuffle', True))
             data_loader = data.DataLoader(dataset, shuffle=False, sampler=sampler, **kwargs)
 
         return data_loader
