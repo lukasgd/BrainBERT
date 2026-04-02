@@ -125,6 +125,14 @@ Resources: 2 nodes, 4 tasks/node, 4 GPUs/node (defaults from fcw.yaml, overridab
 fcw job list
 ```
 
+To change the model architecture, edit `conf/model/masked_tf_model_large.yaml` and upload
+
+```bash
+fcw data upload conf
+```
+
+For continuous uploading use the `--watch` option.
+
 ## Step 7: Sync Results
 
 Continuously download training outputs (checkpoints, logs) to the local `outputs/` directory:

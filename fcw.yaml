@@ -47,6 +47,7 @@ jobs:
       PRETRAIN_DATA_RAW_DIR: braintreebank.dev-small
       PRETRAIN_DATA_DIR: pretrain_data
       HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
 
   train:
     script: slurm/submit-train-prod.sh
@@ -56,6 +57,7 @@ jobs:
     env:
       PRETRAIN_DATA_DIR: pretrain_data
       HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
 
   train-benchy:
     script: slurm/submit-train-benchy.sh
@@ -65,6 +67,7 @@ jobs:
     env:
       PRETRAIN_DATA_DIR: pretrain_data
       HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
 
   nccl-tests:
     script: slurm/submit-nccl-tests.sh
