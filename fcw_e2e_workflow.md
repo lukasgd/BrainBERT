@@ -12,26 +12,22 @@ This document reimplements the workflow described in [README-firecrest-only.md](
 - On x86 hosts targeting arm64 clusters: `apt install qemu-user-static`
 - Working directory: `examples/BrainBERT/`
 
-## Step 0: Obtain Data and Code
+## Step 0: Obtain Data
 
-Download the braintreebank.dev dataset to the local `braintreebank.dev-small/` directory (for testing, a subset is sufficient):
+Download the braintreebank.dev dataset to the local `braintreebank.dev/` directory (for testing, a subset is sufficient):
 
 ```bash
-mkdir -p braintreebank.dev-small
-cd braintreebank.dev-small
+mkdir -p braintreebank.dev
+cd braintreebank.dev
 wget --mirror --no-parent --cut-dirs=1 --accept zip,json,ipynb --reject-regex '\?' https://braintreebank.dev/data/
-cd ../..
 ```
 
 Or with multithreading:
 
 ```bash
-cd braintreebank.dev-small
+cd braintreebank.dev
 wget2 --mirror --no-parent --cut-dirs=1 --max-threads=$(($(nproc)/2)) --accept zip,json,ipynb --reject-regex '\?' https://braintreebank.dev/data/
-cd ../..
 ```
-
-**Verify:** The `build_deps/images/` directory contains the download stage tar file.
 
 ## Step 1: Validate Configuration
 
@@ -42,7 +38,7 @@ fcw config show
 
 **Verify:** Config resolves correctly, credentials are valid, remote system is reachable. Output should show "All checks passed!".
 
-## Step 2: Container Deploy
+## Step 2: Deploy Container
 
 Build, push, and deploy the container in a single command:
 
@@ -75,12 +71,12 @@ Should show `ngc-brainbert+25.12-alps2.sqsh`.
 Upload the raw braintreebank dataset:
 
 ```bash
-fcw data upload braintreebank.dev-small
+fcw data upload braintreebank.dev
 ```
 
 **Verify:**
 ```bash
-fcw data ls braintreebank.dev-small
+fcw data ls braintreebank.dev
 ```
 Should list the uploaded zip files and metadata.
 
@@ -119,6 +115,12 @@ fcw job submit train
 ```
 
 Resources: 2 nodes, 4 tasks/node, 4 GPUs/node (defaults from fcw.yaml, overridable via SBATCH overrides).
+
+To chain a training job after a preprocessing one, use the sbatch option `--dependency afterok:$JOB_PREP`, where the job ID can be obtained as in
+
+```bash
+JOB_PREP=$(fcw job submit preprocess)
+```
 
 **Verify:** Job is running:
 ```bash

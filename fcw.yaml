@@ -9,7 +9,7 @@ workdir:
 # Directory declarations with data flow type
 # type: in (upload only), out (download only), both (bidirectional)
 directories:
-  braintreebank.dev-small:
+  braintreebank.dev:
     type: in
   conf:
     type: in
@@ -24,6 +24,8 @@ containers:
     remote_path: ./ce-images/
     toml: ./env/ngc-brainbert-25.12-alps2.toml
     platform: linux/arm64
+    build_args:
+      BASE_IMAGE: jfrog.svc.cscs.ch/docker-group-csstaff/alps-images/ngc-pytorch:25.12-py3-alps2
 
 # Job definitions with environment
 # container: references a container from the containers section;
@@ -36,7 +38,7 @@ jobs:
     time: "2:00:00"
     nodes: 1
     env:
-      PRETRAIN_DATA_RAW_DIR: braintreebank.dev-small
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev
 
   preprocess:
     script: slurm/submit-preprocess-prod.sh
@@ -44,7 +46,7 @@ jobs:
     time: "12:00:00"
     nodes: 1
     env:
-      PRETRAIN_DATA_RAW_DIR: braintreebank.dev-small
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev
       PRETRAIN_DATA_DIR: pretrain_data
       HYDRA_BASE_RUN_DIR: outputs
       CONF_DIR: conf
