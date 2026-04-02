@@ -20,7 +20,7 @@ fi
 
 export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 
-PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ./env/ngc-brainbert-25.12-alps2.toml bash -c "
+PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ${FCW_CONTAINER_TOML:-./env/ngc-brainbert-25.12-alps2.toml} bash -c "
     if [ ${ENABLE_MLFLOW_MONITORING:-0} -eq 1 ]; then
         export MLFLOW_SYSTEM_METRICS_NODE_ID=r\${SLURM_PROCID}-$(hostname)
     fi

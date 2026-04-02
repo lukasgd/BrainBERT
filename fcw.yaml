@@ -1,0 +1,73 @@
+# fcw configuration file
+project: BrainBERT
+
+# Workdir mapping - all paths are relative to this
+workdir:
+  remote: ${FIRECREST_SCRATCH}/fcw-BrainBERT-${FCW_BRAINBERT_RUN_ID}
+  local: .
+
+# Directory declarations with data flow type
+# type: in (upload only), out (download only), both (bidirectional)
+directories:
+  braintreebank.dev-small:
+    type: in
+  conf:
+    type: in
+  outputs:
+    type: out
+
+# Container definitions
+containers:
+  ngc-brainbert:
+    file: ./env/Dockerfile.prod-multistage
+    tag: ngc-brainbert:25.12-alps2
+    remote_path: ./ce-images/
+    toml: ./env/ngc-brainbert-25.12-alps2.toml
+    platform: linux/arm64
+
+# Job definitions with environment
+# container: references a container from the containers section;
+# at submit time, fcw inlines the TOML and resolves the image path automatically.
+# Env vars with relative paths are expanded to ${workdir.remote}/<path> and injected
+# as shell defaults (export VAR="${VAR:-value}"), so pre-set env vars take precedence.
+jobs:
+  extract-raw:
+    script: slurm/submit-extract-raw.sh
+    time: "2:00:00"
+    nodes: 1
+    env:
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev-small
+
+  preprocess:
+    script: slurm/submit-preprocess-prod.sh
+    container: ngc-brainbert
+    time: "12:00:00"
+    nodes: 1
+    env:
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev-small
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+
+  train:
+    script: slurm/submit-train-prod.sh
+    container: ngc-brainbert
+    time: "12:00:00"
+    nodes: 2
+    env:
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+
+  train-benchy:
+    script: slurm/submit-train-benchy.sh
+    container: ngc-brainbert
+    time: "30:00"
+    nodes: 2
+    env:
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+
+  nccl-tests:
+    script: slurm/submit-nccl-tests.sh
+    container: ngc-brainbert
+    time: "10:00"
+    nodes: 2

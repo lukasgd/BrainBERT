@@ -1,7 +1,7 @@
 ARG BASE_IMAGE 
 ARG DOWNLOAD_IMAGE=download
 
-FROM ${BASE_IMAGE} as download
+FROM ${BASE_IMAGE} AS download
 
 RUN mkdir -p /workspace/build_deps/{apt,python,src}
 
@@ -26,9 +26,9 @@ RUN cd /workspace/build_deps/python \
   && grep -v 'torch_optimizer'  /workspace/BrainBERT/requirements.txt | \
     pip download --dest . -v --no-build-isolation --no-cache -r /dev/stdin
 
-FROM ${DOWNLOAD_IMAGE} as download-copy
+FROM ${DOWNLOAD_IMAGE} AS download-copy
 
-FROM ${BASE_IMAGE} as build-offline
+FROM ${BASE_IMAGE} AS build-offline
 
 COPY --from=download-copy /workspace/build_deps /workspace/build_deps
 

@@ -12,7 +12,7 @@ set -euxo pipefail
 export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 
 
-PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ./env/ngc-brainbert-25.12-alps2.toml \
+PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ${FCW_CONTAINER_TOML:-./env/ngc-brainbert-25.12-alps2.toml} \
     ${ENABLE_DEBUGGING:+$(which enroot-entrypoint.sh)} \
     bash -c "
     ${ENABLE_DEBUGGING:+sed -i 's/#example/import launch_debugpy/g' run_train.py}
@@ -21,7 +21,7 @@ PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environmen
     # per-rank dataset replication and -shuffling (to avoid dataset caching in IO measurement)
     ENABLE_BENCHY_TRAIN=1 \
     BENCHY_FULL_DATASET_ON_EACH_RANK=1 \
-    BENCHY_CONFIG_FILE=$PWD/profiling/benchy_train.yaml \
+    BENCHY_CONFIG_FILE=\$PWD/profiling/benchy_train.yaml \
     BENCHY_OUTPUT_FILE=$PWD/outputs/logs/benchy_output-${SLURM_JOB_NAME}-${SLURM_JOBID}.json \
     HYDRA_FULL_ERROR=1 \
     MASTER_ADDR=\$(scontrol show hostnames \$SLURM_JOB_NODELIST | head -n 1) \
