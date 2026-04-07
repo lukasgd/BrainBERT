@@ -51,14 +51,15 @@ This runs the full pipeline:
 2. Exports and uploads the download image to the remote cluster
 3. Submits a SLURM job that builds the `build-offline` stage and imports into enroot
 
-Alternatively, as an explicit 3-step procedure run:
+Alternatively, as an explicit 3-step procedure:
 
 ```bash
-fcw container build --stage download -f env/Dockerfile.prod-multistage --build-arg BASE_IMAGE=jfrog.svc.cscs.ch/docker-group-csstaff/alps-images/ngc-pytorch:25.12-py3-alps2 -t ngc-brainbert:25.12-alps2-download .
-fcw container push ngc-brainbert:25.12-alps2-download
-fcw container build-remote ngc-brainbert:25.12-alps2-download -f env/Dockerfile.prod-multistage -t ngc-brainbert:25.12-alps2 --stage build-offline --build-arg DOWNLOAD_IMAGE=ngc-brainbert:25.12-alps2-download --build-arg BASE_IMAGE=jfrog.svc.cscs.ch/docker-group-csstaff/alps-images/ngc-pytorch:25.12
--py3-alps2  --enroot --wait
+fcw container build ngc-brainbert
+fcw container push ngc-brainbert
+fcw container build-remote ngc-brainbert --enroot --wait
 ```
+
+Each command resolves the Dockerfile, tag, platform, build args, and stage names from `fcw.yaml`. To build/push only a specific stage, add `--stage download`.
 
 **Verify:** The squashfs image exists on the remote:
 ```bash
