@@ -1,0 +1,21 @@
+# Performance thresholds for BrainBERT e2e tests (seconds).
+# BrainBERT has heavier workloads than the basic example.
+
+default:
+  container-deploy: 1200
+  upload-braintreebank.dev: 600
+  upload-conf: 60
+  job-extract-raw: 1800
+  job-preprocess: 3600
+  job-train: 7200
+  job-train-benchy: 3600
+  job-nccl-tests: 600
+  download-outputs: 300
+
+lys:
+  container-deploy: 900
+  job-extract-raw: 1200
+  job-preprocess: 2400
+  job-train: 5400
+  job-train-benchy: 2400
+  job-nccl-tests: 300
