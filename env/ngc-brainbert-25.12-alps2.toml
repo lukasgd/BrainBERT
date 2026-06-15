@@ -2,6 +2,7 @@ image = "${CE_IMAGES}/ngc-brainbert+25.12-alps2.sqsh"
 
 mounts = [
     "${SCRATCH}",
+    "${HOME}",
 ]
 
 workdir = "/workspace/BrainBERT"
