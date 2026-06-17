@@ -1,0 +1,74 @@
+# fcw configuration file
+project: BrainBERT
+
+workdir: # Workdir mapping - all paths are relative to this
+  remote: ${FIRECREST_SCRATCH}/fcw-BrainBERT-${FCW_BRAINBERT_RUN_ID}
+  local: .
+
+directories:  # directories with data flow type: in (upload only), out (download only), both
+  braintreebank.dev:
+    type: in
+  conf:
+    type: in
+  outputs:
+    type: out
+
+containers:  # container definitions
+  ngc-brainbert:
+    file: ./env/Dockerfile.prod-multistage
+    tag: ngc-brainbert:25.12-alps2
+    remote_path: ./ce-images/
+    toml: ./env/ngc-brainbert-25.12-alps2.toml
+    platform: linux/arm64
+    build_args:
+      BASE_IMAGE: jfrog.svc.cscs.ch/docker-group-csstaff/alps-images/ngc-pytorch:25.12-py3-alps2
+
+jobs:   # Job definitions with environment
+        # container: references a container from the containers section;
+        # at submit time, fcw inlines the TOML and resolves the image path automatically.
+        # env_paths: path-valued vars — relative values are expanded to ${workdir.remote}/<path>.
+        # env: literal vars — passed through untouched.
+        # Both are injected as shell defaults (export VAR="${VAR:-value}"), so pre-set env vars take precedence.
+  extract-raw:
+    script: slurm/submit-extract-raw.sh
+    time: "2:00:00"
+    nodes: 1
+    env_paths:
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev
+
+  preprocess:
+    script: slurm/submit-preprocess-prod.sh
+    container: ngc-brainbert
+    time: "12:00:00"
+    nodes: 1
+    env_paths:
+      PRETRAIN_DATA_RAW_DIR: braintreebank.dev
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
+
+  train:
+    script: slurm/submit-train-prod.sh
+    container: ngc-brainbert
+    time: "12:00:00"
+    nodes: 2
+    env_paths:
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
+
+  train-benchy:
+    script: slurm/submit-train-benchy.sh
+    container: ngc-brainbert
+    time: "30:00"
+    nodes: 2
+    env_paths:
+      PRETRAIN_DATA_DIR: pretrain_data
+      HYDRA_BASE_RUN_DIR: outputs
+      CONF_DIR: conf
+
+  nccl-tests:
+    script: slurm/submit-nccl-tests.sh
+    container: ngc-brainbert
+    time: "10:00"
+    nodes: 2

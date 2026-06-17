@@ -20,7 +20,7 @@ fi
 
 export PRETRAIN_DATA_DIR=${PRETRAIN_DATA_DIR:-$SCRATCH/BrainBERT/pretrain_data/}
 
-PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ./env/ngc-brainbert-25.12-alps2.toml bash -c "
+PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environment ${FCW_CONTAINER_TOML:-./env/ngc-brainbert-25.12-alps2.toml} bash -c "
     if [ ${ENABLE_MLFLOW_MONITORING:-0} -eq 1 ]; then
         export MLFLOW_SYSTEM_METRICS_NODE_ID=r\${SLURM_PROCID}-$(hostname)
     fi
@@ -30,7 +30,7 @@ PMIX_MCA_psec=native srun -ul --mpi pmix --network disable_rdzv_get --environmen
     RANK=\${SLURM_PROCID} \
     LOCAL_RANK=\${SLURM_LOCALID} \
     WORLD_SIZE=\${SLURM_NTASKS} \
-    ${ENABLE_GSSR:+${SCRATCH}/GPU-Saturation-Scorer/gssr-record -o ${PWD}/outputs/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-gssr_report} python3 run_train.py hydra.run.dir=${HYDRA_BASE_RUN_DIR:-$PWD/outputs}/$(date +'%Y-%m-%d/%H-%M-%S')-${SLURM_JOB_ID} +exp=spec2vec ++exp.runner.device=cuda ++exp.runner.dist_gpu=True ++task.dist_gpu=True ++exp.runner.num_workers=16 +data=masked_spec +model=masked_tf_model_large +data.data=${PRETRAIN_DATA_DIR}/manifests ++data.format=h5 ++data.val_split=0.01 +task=fixed_mask_pretrain.yaml +criterion=pretrain_masked_criterion +preprocessor=stft ++data.test_split=0.01 ++task.freq_mask_p=0.05 ++task.time_mask_p=0.05 ++exp.runner.log_step=1000 ++exp.runner.log_step_perf=10 ++exp.runner.total_steps=1000 ++exp.runner.scheduler.name=reduce_on_plateau
+    ${ENABLE_GSSR:+${SCRATCH}/GPU-Saturation-Scorer/gssr-record -o ${PWD}/outputs/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-gssr_report} python3 run_train.py ${CONF_DIR:+--config-path \$(realpath --relative-to=. ${CONF_DIR})} hydra.run.dir=${HYDRA_BASE_RUN_DIR:-$PWD/outputs}/$(date +'%Y-%m-%d/%H-%M-%S')-${SLURM_JOB_ID} +exp=spec2vec ++exp.runner.device=cuda ++exp.runner.dist_gpu=True ++task.dist_gpu=True ++exp.runner.num_workers=16 +data=masked_spec +model=masked_tf_model_large +data.data=${PRETRAIN_DATA_DIR}/manifests ++data.format=h5 ++data.val_split=0.01 +task=fixed_mask_pretrain.yaml +criterion=pretrain_masked_criterion +preprocessor=stft ++data.test_split=0.01 ++task.freq_mask_p=0.05 ++task.time_mask_p=0.05 ++exp.runner.log_step=1000 ++exp.runner.log_step_perf=10 ++exp.runner.total_steps=1000 ++exp.runner.scheduler.name=reduce_on_plateau
 "
 
 # for rank-specific profiling, use e.g. ++exp.runner.profile_ranks=[0,1] ++exp.runner.profiler_schedule='{wait: 10, warmup: 8, active:2}' 
